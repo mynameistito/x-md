@@ -1,17 +1,8 @@
 # Agent notes
 
-## Maintenance notice popup
+## Frontend structure
 
-A temporary work-in-progress banner shows on page load for the homepage and dashboard.
-
-- Module: `src/maintenance-notice.ts`
-- Wired in: `src/main.ts`, `src/dashboard.ts`
-- Styles: `src/style.css` (`.maintenance-*` classes)
-
-When the in-progress work is moved to production and the site is stable again, **ask the user whether they want the maintenance notice removed** before deleting it.
-
-To remove it after confirmation:
-
-1. Delete `src/maintenance-notice.ts`
-2. Remove `setupMaintenanceNotice()` imports and calls from `src/main.ts` and `src/dashboard.ts`
-3. Remove the `.maintenance-*` styles from `src/style.css`
+- Pages: `index.html` (`src/main.ts`), `docs.html` (`src/docs.ts`), `dashboard.html` (`src/dashboard.ts`)
+- Shared header/footer/mobile menu: `src/chrome.ts`
+- Design tokens live in the Tailwind v4 `@theme` block in `src/style.css` (semantic colors: `ink`/`ink-2`/`ink-3`/`ink-4`, `surface`, `raised`, `line`, `hair`, `accent`, `cyan`). Use these utilities instead of hard-coded hex values in markup.
+- `/docs` is rewritten to `/docs.html` in `vercel.json` and registered as a Rollup input in `vite.config.ts`.

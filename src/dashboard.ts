@@ -1,6 +1,5 @@
 import './style.css'
 import { beginClerkAuth, fetchWithClerkToken, loadClerk, type ClerkInstance } from './clerk'
-import { setupMaintenanceNotice } from './maintenance-notice'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
 
@@ -44,15 +43,18 @@ const PLAN_DETAILS: Record<string, { label: string; price: string; blurb: string
 
 app.innerHTML = `
 <div class="x-root min-h-screen w-full">
-  <header class="w-full border-b border-white/[0.08]">
-    <nav aria-label="Primary" class="mx-auto flex h-[73px] max-w-[1100px] items-center justify-between px-6 sm:px-8">
+  <header class="site-header">
+    <nav aria-label="Primary" class="mx-auto flex h-[64px] max-w-[1100px] items-center justify-between px-6 sm:px-8">
       <div class="flex items-center gap-4">
-        <a href="/" class="font-mono text-[17px] font-medium tracking-tight text-[#f7f8f8]">x.md</a>
+        <a href="/" class="flex items-center gap-2.5 font-mono text-[16px] font-medium tracking-tight text-ink">
+          <img src="/logo.svg" alt="" width="22" height="22" class="rounded-[6px]" />
+          x.md
+        </a>
         <span class="hidden h-4 w-px bg-white/[0.12] sm:block"></span>
         <span class="hidden font-mono text-[12px] uppercase tracking-[0.08em] text-[#62666d] sm:block">Dashboard</span>
       </div>
       <div class="flex items-center gap-3">
-        <a href="/#docs" class="nav-link hidden h-8 px-3 sm:flex">Docs</a>
+        <a href="/docs" class="nav-link hidden h-8 px-3 sm:flex">Docs</a>
         <a href="/#pricing" class="nav-link hidden h-8 px-3 sm:flex">Pricing</a>
         <div data-user-button class="hidden h-8 w-8"></div>
         <button type="button" data-action="sign-out" class="nav-link hidden h-8 px-3">Sign out</button>
@@ -171,7 +173,6 @@ app.innerHTML = `
 `
 
 void main()
-setupMaintenanceNotice()
 
 async function main() {
   const clerk = await loadClerk()
