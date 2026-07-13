@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 import { browse, browseResponse, type BrowseResource } from '../lib/browse'
 import { ConvertError as BrowseError } from '../lib/errors'
+import { setCorsHeaders, wantsJson } from '../lib/http'
 import {
   acceptPrefersHtml,
   ConvertError,
@@ -12,10 +13,25 @@ import {
 
 const HANDLE = '[A-Za-z0-9_]{1,15}'
 
-function setCors(res: ServerResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Accept, Content-Type')
+function respondJson(res: ServerResponse, status: number, payload: unknown): void {
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json')
+  res.end(JSON.stringify(payload))
+}
+
+/** Handles OPTIONS preflight and rejects non-GET/HEAD methods. Returns true if the request was fully handled. */
+function guardMethod(req: IncomingMessage, res: ServerResponse): boolean {
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204
+    res.end()
+    return true
+  }
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.setHeader('Allow', 'GET, HEAD, OPTIONS')
+    respondJson(res, 405, { error: 'Method not allowed' })
+    return true
+  }
+  return false
 }
 
 async function handleConvert(
@@ -30,23 +46,11 @@ async function handleConvert(
 
   if (!isApi && !statusMatch) return false
 
-  setCors(res)
-  if (req.method === 'OPTIONS') {
-    res.statusCode = 204
-    res.end()
-    return true
-  }
-
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    res.statusCode = 405
-    res.setHeader('Allow', 'GET, HEAD, OPTIONS')
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ error: 'Method not allowed' }))
-    return true
-  }
+  setCorsHeaders(res)
+  if (guardMethod(req, res)) return true
 
   const accept = String(req.headers.accept ?? '')
-  const asJson = url.searchParams.get('format') === 'json' || accept.includes('application/json')
+  const asJson = wantsJson(url.searchParams.get('format'), accept)
   const asHtml = !asJson && acceptPrefersHtml(accept)
 
   try {
@@ -75,14 +79,10 @@ async function handleConvert(
     }
   } catch (error) {
     if (error instanceof ConvertError) {
-      res.statusCode = error.status
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ error: error.message, code: error.code }))
+      respondJson(res, error.status, { error: error.message, code: error.code })
     } else {
       console.error(error)
-      res.statusCode = 500
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ error: 'Internal converter error' }))
+      respondJson(res, 500, { error: 'Internal converter error' })
     }
   }
 
@@ -102,29 +102,21 @@ async function handleBrowse(url: URL, req: IncomingMessage, res: ServerResponse)
     resource = (match[2] as BrowseResource | undefined) ?? 'profile'
   }
   if (!resource) return false
-  setCors(res)
-  if (req.method === 'OPTIONS') {
-    res.statusCode = 204
-    res.end()
-    return true
-  }
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    res.statusCode = 405
-    res.setHeader('Allow', 'GET, HEAD, OPTIONS')
-    res.end(JSON.stringify({ error: 'Method not allowed' }))
-    return true
-  }
+  setCorsHeaders(res)
+  if (guardMethod(req, res)) return true
   try {
     const result = await browse({ resource, handle: handle ?? url.searchParams.get('handle'), q: url.searchParams.get('q'), feed: url.searchParams.get('feed'), cursor: url.searchParams.get('cursor'), page: url.searchParams.get('page'), limit: url.searchParams.get('limit'), full: url.searchParams.get('full'), format: url.searchParams.get('format'), nocache: url.searchParams.get('nocache') })
-    const response = browseResponse(result, url.searchParams.get('format') === 'json' || String(req.headers.accept ?? '').includes('application/json'))
+    const response = browseResponse(result, wantsJson(url.searchParams.get('format'), String(req.headers.accept ?? '')))
     res.statusCode = response.status
     for (const [key, value] of Object.entries(response.headers)) res.setHeader(key, value)
     res.end(req.method === 'HEAD' ? undefined : response.body)
   } catch (error) {
-    const known = error instanceof BrowseError
-    res.statusCode = known ? error.status : 500
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify(known ? { error: error.message, code: error.code } : { error: 'Internal browse error' }))
+    if (error instanceof BrowseError) {
+      respondJson(res, error.status, { error: error.message, code: error.code })
+    } else {
+      console.error(error)
+      respondJson(res, 500, { error: 'Internal browse error' })
+    }
   }
   return true
 }

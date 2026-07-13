@@ -144,12 +144,6 @@ function parseUserinfo(raw: string | null | undefined): UserinfoLevel {
   throw new ConvertError(400, '`userinfo` must be `off`, `author`, or `all`.', 'invalid_userinfo')
 }
 
-function parseNocache(raw: string | boolean | null | undefined): boolean {
-  if (raw === true) return true
-  if (raw === false || raw == null) return false
-  return raw === '1' || raw === 'true' || raw === 'yes'
-}
-
 function parseBoolean(raw: string | boolean | null | undefined): boolean {
   if (raw === true) return true
   if (raw === false || raw == null) return false
@@ -247,7 +241,7 @@ export async function convertTweet(input: ConvertInput): Promise<ConvertSuccess>
   const format = parseFormat(input.format)
   const thread = parseThread(input.thread)
   const userinfo = parseUserinfo(input.userinfo)
-  const nocache = parseNocache(input.nocache)
+  const nocache = parseBoolean(input.nocache)
   const compact = !parseBoolean(input.full)
   const context = parseContext(input.context)
   const replies = parseReplies(input.replies)

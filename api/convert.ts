@@ -1,33 +1,33 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { ConvertError, acceptPrefersHtml, convertTweet, markdownResponse } from '../lib/converter.js'
+import { setCorsHeaders, wantsJson } from '../lib/http.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Accept, Content-Type')
+  setCorsHeaders(res)
   if (req.method === 'OPTIONS') return res.status(204).end()
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.setHeader('Allow', 'GET, HEAD, OPTIONS')
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  const param = (key: string): string | undefined => (typeof req.query[key] === 'string' ? req.query[key] : undefined)
   const accept = String(req.headers.accept ?? '')
-  const requestedFormat = typeof req.query.format === 'string' ? req.query.format : undefined
-  const asJson = requestedFormat === 'json' || accept.includes('application/json')
+  const requestedFormat = param('format')
+  const asJson = wantsJson(requestedFormat, accept)
   const asHtml = !asJson && acceptPrefersHtml(accept)
 
   try {
     const result = await convertTweet({
-      url: typeof req.query.url === 'string' ? req.query.url : undefined,
-      handle: typeof req.query.handle === 'string' ? req.query.handle : undefined,
-      id: typeof req.query.id === 'string' ? req.query.id : undefined,
+      url: param('url'),
+      handle: param('handle'),
+      id: param('id'),
       format: requestedFormat,
-      thread: typeof req.query.thread === 'string' ? req.query.thread : undefined,
-      userinfo: typeof req.query.userinfo === 'string' ? req.query.userinfo : undefined,
-      nocache: typeof req.query.nocache === 'string' ? req.query.nocache : undefined,
-      full: typeof req.query.full === 'string' ? req.query.full : undefined,
-      context: typeof req.query.context === 'string' ? req.query.context : undefined,
-      replies: typeof req.query.replies === 'string' ? req.query.replies : undefined,
+      thread: param('thread'),
+      userinfo: param('userinfo'),
+      nocache: param('nocache'),
+      full: param('full'),
+      context: param('context'),
+      replies: param('replies'),
     })
 
     const { status, headers, body } = markdownResponse(result, asJson, asHtml)
