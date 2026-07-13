@@ -138,3 +138,31 @@ export function setupTheme(root: HTMLElement) {
 
   apply(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light')
 }
+
+export function setupLinkPrefetch(root: HTMLElement) {
+  const prefetched = new Set<string>()
+
+  const prefetch = (target: EventTarget | null) => {
+    const anchor = target instanceof Element ? target.closest<HTMLAnchorElement>('a[href]') : null
+    if (!anchor || anchor.target === '_blank' || anchor.hasAttribute('download')) return
+
+    const url = new URL(anchor.href, window.location.href)
+    if (url.origin !== window.location.origin) return
+
+    url.hash = ''
+    const href = `${url.pathname}${url.search}`
+    const current = `${window.location.pathname}${window.location.search}`
+    if (href === current || prefetched.has(href)) return
+
+    prefetched.add(href)
+    const link = document.createElement('link')
+    link.rel = 'prefetch'
+    link.href = href
+    link.setAttribute('fetchpriority', 'low')
+    document.head.append(link)
+  }
+
+  root.addEventListener('pointerover', (event) => prefetch(event.target), { passive: true })
+  root.addEventListener('focusin', (event) => prefetch(event.target))
+  root.addEventListener('touchstart', (event) => prefetch(event.target), { passive: true })
+}

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 vi.mock('./cache.js', () => ({
   buildCacheKey: vi.fn(() => 'browse-test'),
   cacheControlHeader: vi.fn(() => 'public, max-age=300'),
+  vercelCacheControlHeader: vi.fn(() => 'public, s-maxage=300'),
   withCache: vi.fn(async (_key: string, _nocache: boolean, fn: () => Promise<unknown>) => ({ value: await fn(), status: 'miss' })),
 }))
 
@@ -71,6 +72,11 @@ describe('browse', () => {
     const result = await browse({ resource: 'search', q: 'x-md', full: true, nocache: true })
     const response = browseResponse(result, true)
     expect(response.headers['Content-Type']).toContain('application/json')
+    expect(response.headers).toMatchObject({
+      Vary: 'Accept',
+      'Cache-Control': 'public, max-age=300',
+      'Vercel-CDN-Cache-Control': 'public, s-maxage=300',
+    })
     expect(response.headers['X-Source']).toBe('fxtwitter')
     expect(response.headers['X-Result-Count']).toBe('1')
     expect(JSON.parse(response.body)).toMatchObject({ resource: 'search', query: 'x-md' })

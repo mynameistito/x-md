@@ -1,7 +1,7 @@
 import './style.css'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import { footerHtml, headerHtml, setupMobileMenu, setupTheme } from './chrome'
+import { footerHtml, headerHtml, setupLinkPrefetch, setupMobileMenu, setupTheme } from './chrome'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -398,7 +398,7 @@ app.innerHTML = `
     </section>
 
     <!-- agents: horizontal accordion -->
-    <section id="agents" class="scroll-mt-28 border-t border-line">
+    <section id="agents" class="deferred-section scroll-mt-28 border-t border-line">
       <div class="mx-auto max-w-[1200px] px-6 py-28 sm:px-8 md:py-40">
         <h2 class="max-w-[20ch] text-[clamp(1.9rem,3.6vw,3rem)] leading-[1.1] font-black tracking-tight text-ink">
           Three ways to point an agent at it.
@@ -448,7 +448,7 @@ app.innerHTML = `
     </section>
 
     <!-- action -->
-    <section class="border-t border-line bg-raised">
+    <section class="deferred-section border-t border-line bg-raised">
       <div class="mx-auto max-w-[1200px] px-6 py-28 text-center sm:px-8 md:py-44">
         <h2 class="mx-auto max-w-[18ch] text-[clamp(2.2rem,5vw,4rem)] leading-[1.05] font-black tracking-tight text-ink">
           Read a post the way your agent does.
@@ -472,6 +472,7 @@ app.innerHTML = `
 setupConvertForm(app)
 setupMobileMenu(app)
 setupTheme(app)
+setupLinkPrefetch(app)
 setupCopyButtons(app)
 setupAccordion(app)
 setupMotion(app)

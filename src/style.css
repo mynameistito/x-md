@@ -118,6 +118,11 @@ html[data-theme="dark"] {
     min-width: 0;
   }
 
+  .deferred-section {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 720px;
+  }
+
   .x-root a:focus-visible,
   .x-root button:focus-visible,
   .x-root input:focus-visible,

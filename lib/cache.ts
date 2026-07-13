@@ -134,6 +134,10 @@ export async function withCache<T>(
 }
 
 export function cacheControlHeader(): string {
+  return 'public, max-age=0, must-revalidate'
+}
+
+export function vercelCacheControlHeader(): string {
   const seconds = Math.floor(ttlMs() / 1000)
-  return `public, max-age=${seconds}, s-maxage=${seconds}, stale-while-revalidate=86400`
+  return `public, s-maxage=${seconds}, stale-while-revalidate=86400`
 }

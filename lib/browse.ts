@@ -1,4 +1,10 @@
-import { buildCacheKey, cacheControlHeader, type CacheStatus, withCache } from './cache.js'
+import {
+  buildCacheKey,
+  cacheControlHeader,
+  type CacheStatus,
+  vercelCacheControlHeader,
+  withCache,
+} from './cache.js'
 import { ConvertError } from './errors.js'
 import {
   fetchFxConnections,
@@ -189,11 +195,15 @@ export async function browse(input: BrowseInput): Promise<BrowseResult> {
 export function browseResponse(result: BrowseResult, asJson: boolean): { status: number; headers: Record<string, string>; body: string } {
   const headers: Record<string, string> = {
     'Content-Type': asJson ? 'application/json; charset=utf-8' : 'text/markdown; charset=utf-8',
+    Vary: 'Accept',
     'X-Source': 'fxtwitter',
     'X-Cache': result.cache.toUpperCase(),
     'X-Browse-Resource': result.resource,
     'X-Result-Count': String(result.posts?.length ?? result.users?.length ?? 0),
   }
-  if (result.cache !== 'bypass') headers['Cache-Control'] = cacheControlHeader()
+  if (result.cache !== 'bypass') {
+    headers['Cache-Control'] = cacheControlHeader()
+    headers['Vercel-CDN-Cache-Control'] = vercelCacheControlHeader()
+  }
   return { status: 200, headers, body: asJson ? JSON.stringify(result) : result.markdown }
 }

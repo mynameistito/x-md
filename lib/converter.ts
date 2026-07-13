@@ -1,4 +1,10 @@
-import { buildCacheKey, cacheControlHeader, type CacheStatus, withCache } from './cache.js'
+import {
+  buildCacheKey,
+  cacheControlHeader,
+  type CacheStatus,
+  vercelCacheControlHeader,
+  withCache,
+} from './cache.js'
 import { ConvertError } from './errors.js'
 import { fetchPosts, type ContextMode, type FetchSource, type RepliesMode } from './tweet-fetch.js'
 import { renderThreadMarkdown, type UserinfoLevel } from './markdown.js'
@@ -301,6 +307,7 @@ export function markdownResponse(result: ConvertSuccess, asJson = false, asHtml 
   body: string
 } {
   const sharedHeaders: Record<string, string> = {
+    Vary: 'Accept',
     'X-Converter': 'x-md',
     'X-Source': result.source,
     'X-Post-Count': String(result.postCount),
@@ -310,6 +317,7 @@ export function markdownResponse(result: ConvertSuccess, asJson = false, asHtml 
 
   if (result.cache !== 'bypass') {
     sharedHeaders['Cache-Control'] = cacheControlHeader()
+    sharedHeaders['Vercel-CDN-Cache-Control'] = vercelCacheControlHeader()
   }
 
   if (asJson) {

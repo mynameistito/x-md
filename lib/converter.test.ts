@@ -12,6 +12,7 @@ vi.mock('./cache.js', () => ({
     status: 'miss',
   })),
   cacheControlHeader: vi.fn(() => 'public, max-age=300'),
+  vercelCacheControlHeader: vi.fn(() => 'public, s-maxage=300'),
 }))
 
 vi.mock('./tweet-fetch.js', () => ({
@@ -51,6 +52,16 @@ describe('output selection', () => {
     expect(payload.posts[0]?.url).toBe(validUrl)
     expect(payload.source).toBe('fxtwitter')
     expect(payload.markdown).toBe('# hello')
+  })
+
+  test('varies negotiated responses by Accept and separates browser and CDN caching', async () => {
+    const result = await convertTweet({ url: validUrl })
+    const response = markdownResponse(result)
+    expect(response.headers).toMatchObject({
+      Vary: 'Accept',
+      'Cache-Control': 'public, max-age=300',
+      'Vercel-CDN-Cache-Control': 'public, s-maxage=300',
+    })
   })
 
   test('retains relation annotations and synthesizes reply source URLs', async () => {
