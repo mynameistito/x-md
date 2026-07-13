@@ -1,20 +1,125 @@
 # x.md
 
-Open-source API and landing page that turns public **X posts into Markdown** you can save, search, and pipe into agents. Self-host on [Vercel](https://vercel.com) with no paid X API keys required for the default path.
+Turn public X posts, conversations, profiles, search results, and social graphs into compact Markdown for agents. The hosted API is available at [x.pcstyle.dev](https://x.pcstyle.dev); no X API key is required for the default provider path.
 
-**Not affiliated with X Corp.**
+**Not affiliated with X Corp. Public lists are not available.**
 
-## Features
+## What it returns
 
-- **Markdown** and **Obsidian** (`?format=obsidian`) output with YAML frontmatter
-- **Threads** (default `full`): conversation ancestors and author continuations; use `?thread=off` for a single post only
-- **Author metadata** (`?userinfo=author` or `all`)
-- **X Articles** when the primary provider returns article blocks
-- **Provider chain**: FxTwitter (primary), X syndication CDN (fallback), optional [Context.dev](https://context.dev) and [Firecrawl](https://firecrawl.dev) scrape
-- **Response header** `X-Source`: `fxtwitter` | `syndication` | `contextdev` | `firecrawl`
-- **CORS** enabled on `/api/*` for browser and agent use
+- Compact, agent-friendly Markdown by default; add `?full=true` for dates, metrics, and richer profile details.
+- A source URL for every post and reply, including quoted posts.
+- Direct video URLs, thumbnails, duration/dimensions/bitrate when supplied, and all available video variants.
+- Conversation context by default: parents, the author's thread, and top replies. Use `context` and `replies` to narrow it.
+- Structured JSON with the rendered Markdown and raw post/profile data via `?format=json` or `Accept: application/json`.
+- Profiles with profile data and up to 20 latest original posts by default.
+- Search, followers, and following, with cursor or bounded page pagination.
 
-## Quick start
+## Use the hosted API
+
+Replace `x.com` with `x.pcstyle.dev` on a public status URL:
+
+```text
+https://x.com/handle/status/1234567890
+https://x.pcstyle.dev/handle/status/1234567890
+```
+
+```bash
+curl -sS -H 'Accept: text/markdown' \
+  'https://x.pcstyle.dev/handle/status/1234567890'
+
+curl -sS -G 'https://x.pcstyle.dev/api/convert' \
+  --data-urlencode 'url=https://x.com/handle/status/1234567890'
+```
+
+Browsers that request HTML get a readable page containing the Markdown. Agents can explicitly request `text/markdown`.
+
+## Post conversion
+
+Both `GET /:handle/status/:id` and `GET /api/convert?url=…` support:
+
+| Parameter | Default | Supported values |
+| --- | --- | --- |
+| `format` | `markdown` | `markdown`, `obsidian`, `json` |
+| `full` | false | `true`, `1`, or `yes` enables expanded Markdown; Obsidian is always expanded |
+| `thread` | `full` | `off`, `full`, `conversation`, or a limit from `2` to `100` |
+| `context` | `full` | `full` includes parents, author thread, and selected replies; `thread` excludes unrelated replies |
+| `replies` | `top` | `top`, `recent`, `off` |
+| `userinfo` | `off` | `off`, `author`, `all` |
+| `nocache` | false | `true`, `1`, or `yes` bypasses the application cache |
+
+`thread=off` returns only the requested post. The default conversation result is ordered and labels posts as parent, post, thread, or reply when that data is available. Provider fallbacks can return less context, article content, or quote data.
+
+```bash
+# Expanded conversation without replies
+curl -sS 'https://x.pcstyle.dev/handle/status/1234567890?full=true&replies=off'
+
+# Author thread only, capped at 20 posts
+curl -sS 'https://x.pcstyle.dev/handle/status/1234567890?context=thread&thread=20'
+
+# Structured output
+curl -sS -H 'Accept: application/json' \
+  'https://x.pcstyle.dev/handle/status/1234567890'
+curl -sS 'https://x.pcstyle.dev/handle/status/1234567890?format=json'
+```
+
+JSON conversion responses contain `url`, `markdown`, raw `posts`, `compact`, `warnings`, `postCount`, `source`, `cache`, and `format`. Media in both Markdown and `posts` includes direct video data when the upstream provider exposes it; availability and lifetime of X CDN URLs are controlled by X.
+
+## Browse profiles and X
+
+Browse routes return compact Markdown by default and structured data with `?format=json` or `Accept: application/json`.
+
+| Route | Behavior |
+| --- | --- |
+| `GET /:handle` | Profile data and latest original posts (replies and reposts filtered out) |
+| `GET /search?q=…` | Search posts; `feed=latest`, `top`, or `media` (invalid values fall back to `latest`) |
+| `GET /:handle/followers` | Followers |
+| `GET /:handle/following` | Accounts followed |
+
+The default `limit` is 20 and the maximum is 50. Pass the opaque `cursor` returned as `nextCursor`, or use `page=1` through `page=10`; values above 10 are clamped. Without a cursor, page pagination walks upstream pages and can be slower. A cursor fetches one upstream page. Results can contain fewer items than `limit`, especially profiles, because replies and reposts are filtered after retrieval.
+
+```bash
+curl -sS 'https://x.pcstyle.dev/elonmusk'
+curl -sS 'https://x.pcstyle.dev/search?q=typescript&feed=latest&limit=20'
+curl -sS 'https://x.pcstyle.dev/elonmusk/followers?full=true'
+curl -sS -H 'Accept: application/json' \
+  'https://x.pcstyle.dev/elonmusk/following?limit=50'
+```
+
+### Direct `/api/browse` usage
+
+Use `resource=profile|search|followers|following`, plus the corresponding `handle` or `q`:
+
+```bash
+curl -sS -G 'https://x.pcstyle.dev/api/browse' \
+  --data-urlencode 'resource=profile' \
+  --data-urlencode 'handle=elonmusk'
+
+curl -sS -G 'https://x.pcstyle.dev/api/browse' \
+  --data-urlencode 'resource=search' \
+  --data-urlencode 'q=typescript' \
+  --data-urlencode 'feed=top' \
+  --data-urlencode 'format=json'
+```
+
+Browse JSON includes the resource-specific `profile`, `posts`, or `users`, plus `page`, `limit`, optional `nextCursor`, rendered `markdown`, and cache status. The verified upstream profile API does not expose pinned-post markers, and public X lists are explicitly unsupported.
+
+## Agent skill
+
+Install the hosted skill, `browse-x`, with the [skills CLI](https://skills.sh/):
+
+```bash
+bunx skills add pc-style/x-md -g -y --skill browse-x
+```
+
+The skill uses `https://x.pcstyle.dev`; it does not require a local checkout or local API keys.
+
+## Caching and reliability
+
+FxTwitter is the primary data provider and X's syndication endpoint is the fallback. Self-hosted deployments may additionally configure Context.dev and Firecrawl. `X-Source` reports `fxtwitter`, `syndication`, `contextdev`, or `firecrawl`; `X-Cache` reports cache status. Browse endpoints use FxTwitter directly.
+
+Successful responses are cached for about one hour by default (`CACHE_TTL_SECONDS=3600`) and send cache headers unless bypassed. `nocache=true` bypasses the application cache, but it cannot bypass upstream caches. Public X data can be missing, delayed, rate-limited, deleted, protected, or shaped differently by upstream providers, so context, counts, media variants, and pagination cursors are best effort. The API does not authenticate to private accounts and does not provide public lists.
+
+## Self-host
 
 ```bash
 git clone https://github.com/pc-style/x-md.git
@@ -24,189 +129,27 @@ cp .env.local.example .env.local
 bun run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173), paste a public status URL, or call the API directly.
+Optional environment variables:
 
-## Agent skills
-
-Cursor agents can read X links via bundled skills. Install with the [skills CLI](https://skills.sh/):
-
-```bash
-bunx skills add pc-style/x-md --list
-
-bunx skills add pc-style/x-md -g -y \
-  --skill read-x-links-vercel --skill read-x-links-local
-```
-
-| Skill | Use when |
+| Variable | Description |
 | --- | --- |
-| `read-x-links-vercel` | Hosted API at `x.pcstyle.dev` — no local repo |
-| `read-x-links-local` | Full threads, optional Context.dev/Firecrawl fallbacks, working in this repo |
+| `CONTEXT_DEV_API_KEY` | Context.dev converter fallback |
+| `FIRECRAWL_API_KEY` | Firecrawl converter fallback |
+| `CACHE_TTL_SECONDS` | Cache TTL; default `3600` |
+| `CACHE_DISABLED` | Set to `1` to disable caching |
+| `CACHE_PERSIST` | Set to `0` for memory-only caching |
 
-Live site: [https://x.pcstyle.dev](https://x.pcstyle.dev)
-
-## API
-
-### Convert by query string
-
-```bash
-curl -sS -H "Accept: text/markdown" \
-  "http://localhost:5173/api/convert?url=https%3A%2F%2Fx.com%2Fhandle%2Fstatus%2F123"
-```
-
-### Path-style URLs (Vercel rewrites)
-
-```text
-GET /:handle/status/:id
-```
-
-Same query params as below.
-
-### Query parameters
-
-| Param | Default | Values |
-| --- | --- | --- |
-| `url` | — | Encoded X status URL (required on `/api/convert`) |
-| `format` | `markdown` | `markdown`, `obsidian` |
-| `thread` | `full` | `off`, `full`, `conversation`, `2-100` |
-| `userinfo` | `off` | `off`, `author`, `all` |
-| `nocache` | — | Bypass cache when set |
-
-### JSON responses
-
-```bash
-curl -sS -H "Accept: application/json" \
-  "http://localhost:5173/api/convert?url=..."
-```
-
-Returns Markdown in `body` plus `source` and cache metadata.
-
-## Environment variables
-
-Copy [`.env.local.example`](.env.local.example) to `.env.local`:
-
-| Variable | Required | Description |
-| --- | --- | --- |
-| `CONTEXT_DEV_API_KEY` | No | Context.dev Markdown scrape fallback when FxTwitter and syndication fail (local/self-host only by default) |
-| `FIRECRAWL_API_KEY` | No | Firecrawl scrape fallback when FxTwitter, syndication, and Context.dev fail (local/self-host only by default) |
-| `CACHE_TTL_SECONDS` | No | Converter cache TTL (default `3600`) |
-| `CACHE_DISABLED` | No | Set to `1` to disable cache |
-| `CACHE_PERSIST` | No | Set to `0` to use memory-only cache |
-
-## Deploy on Vercel
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fpc-style%2Fx-md)
-
-```bash
-bun run build
-vercel link
-vercel env pull .env.local   # optional: pull from Vercel
-# add secrets on Vercel dashboard or:
-vercel env add CONTEXT_DEV_API_KEY
-vercel env add FIRECRAWL_API_KEY
-vercel --prod
-```
-
-`vercel.json` sets build output to `dist`, API routes under `api/`, and path rewrites for `/:handle/status/:id`.
-
-Production domain: `https://x.pcstyle.dev` (canonical URLs and OG tags in `index.html`).
-
-**DNS (Cloudflare or your provider):** `A` record `x` → `76.76.21.21` (Vercel).
+Deploy with Vercel after `bun run build`; `vercel.json` configures `dist`, the API handlers, and all public route rewrites.
 
 ## Project layout
 
 ```text
-api/convert.ts     Vercel serverless handler
-lib/               Fetch providers, markdown rendering, cache
-src/               Vite landing page
-public/            Static assets, robots.txt, sitemap.xml
+api/convert.ts     Post conversion handler
+api/browse.ts      Profile, search, followers, and following handler
+lib/               Providers, rendering, pagination, and cache
+src/               Vite landing page and rendered documentation
 ```
 
 ## License
 
 [MIT](LICENSE)
-
-## Premium monetization setup
-
-The basic converter remains free and anonymous. Premium modes are gated by Clerk auth or user API keys, Convex audit/API-key storage, and Autumn entitlements backed by Stripe.
-
-Plans and credits:
-
-| Plan | Price | Included |
-|---|---:|---|
-| Free | $0/mo | Basic anonymous X Markdown conversion, social link bundle, conversation map, media manifest |
-| Starter | $5/mo | 250 social credits/mo, Obsidian templates, quote expansion, JSON-LD basic export |
-| Pro | $15/mo | 1,500 social credits/mo, thread briefing, author dossiers, cross-platform parser, context-window safe mode, bulk JSON-LD |
-
-Premium feature costs:
-
-| Feature | Credits | API mode |
-|---|---:|---|
-| Quote-post expansion | 1 | `premium=quote_expansion` |
-| Obsidian social note templates | 1 | `premium=obsidian_templates` |
-| Thread briefing mode | 3 | `premium=thread_briefing` |
-| Context-window safe mode | 3 | `premium=context_safe_mode` |
-| Cross-platform social parser | 3 | `premium=cross_platform_parser` |
-| Social archive JSON-LD bulk/export | 5 | `premium=jsonld_bulk_export` |
-| Author dossier | 10 | `premium=author_dossier` |
-
-Required env vars for the premium stack (`VITE_CLERK_PUBLISHABLE_KEY` is the Vite browser key; keep `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` too if provisioning through Vercel/Clerk integrations):
-
-```bash
-VITE_CLERK_PUBLISHABLE_KEY=
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
-CLERK_SECRET_KEY=
-CLERK_JWT_ISSUER_DOMAIN=
-CONVEX_DEPLOYMENT=
-NEXT_PUBLIC_CONVEX_URL=
-CONVEX_SERVER_SECRET=
-AUTUMN_SECRET_KEY=
-AUTUMN_WEBHOOK_SECRET=
-```
-
-Set `CLERK_JWT_ISSUER_DOMAIN` in Convex as well as local/Vercel env so `convex/auth.config.ts` can validate Clerk JWTs for the `convex` JWT template.
-
-Autumn is the source of truth for plans, feature credits, checkout, customer portal, and Stripe subscription state. Do not create or mutate Stripe products/prices/subscriptions directly for this flow; configure plans/features in Autumn and let Autumn sync Stripe.
-
-Autumn config lives in `autumn.config.ts` (pulled from the Autumn dashboard with `bunx atmn pull`, pushed with `bunx atmn push`). Sandbox plans already defined there:
-
-| Plan ID | Price | Social credits |
-|---|---:|---:|
-| `free` | $0 | auto-enabled |
-| `starter` | $5/mo | 250/mo |
-| `pro` | $15/mo | 1,500/mo |
-| `credit_top_up` | $5 one-off | +500 credits (add-on) |
-
-Customers are **individual Clerk users** (`customerId` = Clerk `userId`). There is no org/workspace billing model in x.md.
-
-Premium API flow:
-
-1. Resolve auth from Clerk bearer token or `Authorization: Bearer xmd_...` API key.
-2. Mirror the Clerk user into Convex and get/create the Autumn customer with the Clerk user ID as `customerId`.
-3. For premium work, call Autumn `POST /v1/check` with `feature_id: "social_credits"`, `required_balance`, and `send_event: true` before doing expensive work.
-4. Return `401` for missing auth and stable `402` paywall responses when Autumn denies allowance.
-5. Log request and feature-run records in Convex when configured.
-
-Account and sign-up flow:
-
-- The homepage shows obvious `Sign up free`, `Sign in`, `Create API key`, and `Manage billing` actions when `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is configured.
-- Pricing upgrade buttons open Clerk sign-up first for anonymous users, then call billing endpoints with the Clerk bearer token.
-
-Account endpoints:
-
-- `GET /api/account` returns the signed-in user's Autumn plan, credit balance, and products.
-- `GET /dashboard` is the account UI for plan, credits, and API keys.
-- `POST /api/billing?plan=starter|pro` starts Autumn checkout (`redirectMode: always`).
-- `POST /api/billing?action=portal` opens the Autumn/Stripe customer portal.
-- `GET /api/api-keys` lists hashed API-key records for the authenticated user.
-- `POST /api/api-keys` creates an `xmd_...` API key and stores only its SHA-256 hash in Convex.
-- `DELETE /api/api-keys` revokes by `keyHash` or plaintext `apiKey`.
-- `POST /api/autumn-webhook` verifies the raw body with `AUTUMN_WEBHOOK_SECRET`, then mirrors `billing.updated` events into Convex `billingCustomers` for account debugging.
-
-Local dev (`bun run dev`) proxies `/api/billing`, `/api/account`, and `/api/api-keys` through the same Vercel handlers used in production so the dashboard and homepage billing buttons work without `vercel dev`.
-
-Deploy Convex separately as part of release setup:
-
-```bash
-bunx convex dev      # initial link/codegen
-bunx convex deploy   # production Convex functions/schema
-```

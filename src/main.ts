@@ -1,14 +1,18 @@
 import './style.css'
-import { beginClerkAuth, CLERK_PUBLISHABLE_KEY, loadClerk as loadClerkInstance, type ClerkInstance } from './clerk'
-import { footerHtml, headerHtml, setupMobileMenu } from './chrome'
+import { gsap } from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { footerHtml, headerHtml, setupMobileMenu, setupTheme } from './chrome'
+
+gsap.registerPlugin(ScrollTrigger)
 
 const app = document.querySelector<HTMLDivElement>('#app')!
 
 const EXAMPLE_HANDLE = 'trq212'
 const EXAMPLE_ID = '2052809885763747935'
 const EXAMPLE_X_URL = `https://x.com/${EXAMPLE_HANDLE}/status/${EXAMPLE_ID}`
-const EXAMPLE_HOSTED_URL = `https://x.pcstyle.dev/${EXAMPLE_HANDLE}/status/${EXAMPLE_ID}`
 const EXAMPLE_PATH = `/${EXAMPLE_HANDLE}/status/${EXAMPLE_ID}`
+
+const SKILL_CMD = 'bunx skills add pc-style/x-md -g -y'
 
 const HOSTED_HOSTS = new Set([
   'x.pcstyle.dev',
@@ -51,187 +55,412 @@ function setupConvertForm(root: HTMLElement) {
   })
 }
 
+function setupCopyButtons(root: HTMLElement) {
+  root.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
+    const original = btn.textContent
+    btn.addEventListener('click', async () => {
+      const text = btn.dataset.copy
+      if (!text) return
+      try {
+        await navigator.clipboard.writeText(text)
+        btn.dataset.copied = ''
+        btn.textContent = 'Copied'
+        window.setTimeout(() => {
+          delete btn.dataset.copied
+          btn.textContent = original
+        }, 1600)
+      } catch {
+        /* clipboard unavailable; leave the command selectable */
+      }
+    })
+  })
+}
+
+function setupAccordion(root: HTMLElement) {
+  const items = Array.from(root.querySelectorAll<HTMLElement>('.acc-item'))
+  if (!items.length) return
+  const open = (item: HTMLElement) => {
+    items.forEach((i) => {
+      delete i.dataset.open
+      i.querySelector<HTMLButtonElement>('.acc-trigger')?.setAttribute('aria-expanded', 'false')
+    })
+    item.dataset.open = ''
+    item.querySelector<HTMLButtonElement>('.acc-trigger')?.setAttribute('aria-expanded', 'true')
+  }
+  items.forEach((item) => {
+    const trigger = item.querySelector<HTMLButtonElement>('.acc-trigger')
+    if (!trigger) return
+    item.addEventListener('mouseenter', () => open(item))
+    trigger.addEventListener('focus', () => open(item))
+    trigger.addEventListener('click', () => open(item))
+  })
+}
+
+function splitWords(el: HTMLElement) {
+  const text = (el.textContent ?? '').trim()
+  el.innerHTML = text
+    .split(/\s+/)
+    .map((w) => `<span class="reveal-word">${w}</span>`)
+    .join(' ')
+}
+
+function setupMotion(root: HTMLElement) {
+  const scrubEl = root.querySelector<HTMLElement>('[data-scrub-text]')
+  if (scrubEl) splitWords(scrubEl)
+
+  const mm = gsap.matchMedia()
+
+  mm.add('(prefers-reduced-motion: reduce)', () => {
+    root
+      .querySelectorAll<HTMLElement>('.reveal-word')
+      .forEach((w) => (w.style.opacity = '1'))
+  })
+
+  mm.add('(prefers-reduced-motion: no-preference)', () => {
+    gsap.from('[data-hero-stagger] > *', {
+      y: 26,
+      opacity: 0,
+      duration: 0.9,
+      ease: 'power3.out',
+      stagger: 0.09,
+    })
+
+    gsap.from('[data-hero-card]', {
+      y: 48,
+      opacity: 0,
+      rotate: 6,
+      duration: 1.1,
+      ease: 'power3.out',
+      delay: 0.3,
+    })
+
+    const words = gsap.utils.toArray<HTMLElement>('[data-scrub-text] .reveal-word')
+    if (words.length) {
+      gsap.to(words, {
+        opacity: 1,
+        stagger: 0.05,
+        ease: 'none',
+        scrollTrigger: {
+          trigger: '[data-scrub-text]',
+          start: 'top 80%',
+          end: 'center 42%',
+          scrub: true,
+        },
+      })
+    }
+
+    gsap.utils.toArray<HTMLElement>('[data-rise-card]').forEach((el, i) => {
+      gsap.from(el, {
+        y: 36,
+        opacity: 0,
+        scale: 0.96,
+        duration: 0.8,
+        delay: (i % 2) * 0.08,
+        ease: 'power3.out',
+        scrollTrigger: { trigger: el, start: 'top 86%' },
+      })
+    })
+  })
+
+  mm.add('(min-width: 1024px) and (prefers-reduced-motion: no-preference)', () => {
+    const section = root.querySelector<HTMLElement>('[data-pin-section]')
+    const target = root.querySelector<HTMLElement>('[data-pin-target]')
+    if (!section || !target) return
+    ScrollTrigger.create({
+      trigger: section,
+      start: 'top 120px',
+      end: () => `+=${Math.max(section.offsetHeight - target.offsetHeight - 160, 0)}`,
+      pin: target,
+      pinSpacing: false,
+      invalidateOnRefresh: true,
+    })
+  })
+}
+
+/* what an agent actually gets back from x.com without a browser */
+const xComOutput = `<span class="t-dim">&lt;!DOCTYPE html&gt;&lt;html lang="en" dir="ltr"
+data-app-env="prod"&gt;&lt;head&gt;&lt;meta charSet="utf-8"
+nonce="JCApsPM44mDDnid3Yl…"&gt;&lt;meta
+name="viewport" content="width=device-width…</span>
+
+<span class="t-dim">…hundreds of KB of markup,
+zero post text…</span>
+
+<span class="t-bad">JavaScript is not available.</span>`
+
+/* real trimmed output from the hosted converter for the example post */
+const mdOutput = `<span class="t-key">## 1/2 — Thariq (@trq212)</span>
+
+<span class="t-dim">Source:</span> x.com/${EXAMPLE_HANDLE}/status/…
+<span class="t-dim">Stats:</span> 17,717 likes · 14.4M views
+
+<span class="t-key">## Using Claude Code: The
+   Unreasonable Effectiveness
+   of HTML</span>
+
+Markdown has become the dominant
+file format used by agents to
+communicate with us…`
+
+const heroCard = `<span class="t-key">## 1/2 — Thariq (@trq212)</span>
+
+<span class="t-dim">Source:</span> ${EXAMPLE_X_URL}
+<span class="t-dim">Stats:</span> 17,717 likes · 2,275 reposts
+
+<span class="t-key">## Using Claude Code: The Unreasonable
+   Effectiveness of HTML</span>
+
+Markdown has become the dominant file
+format used by agents to communicate
+with us…`
+
+const MARQUEE_ITEMS = [
+  'Full threads by default',
+  '?format=obsidian',
+  'Quote posts nested inline',
+  'Images and video preserved',
+  'X Articles, headings and all',
+  'text/markdown response',
+  '?thread=off for a single post',
+  'No account, no API key',
+]
+
+const marqueeTrack = MARQUEE_ITEMS.map(
+  (item) => `<span class="flex items-center gap-10"><span>${item}</span><span aria-hidden="true" class="text-accent">·</span></span>`,
+).join('')
+
 app.innerHTML = `
-<div class="x-root w-full overflow-x-clip">
+<div class="x-root w-full max-w-full overflow-x-hidden">
   <a href="#convert" class="skip-link">Skip to converter</a>
-  ${headerHtml({ page: 'landing', withAuth: true })}
+  ${headerHtml({ page: 'landing' })}
 
-  <main id="top">
-    <section class="relative">
-      <div class="hero-glow"></div>
-      <div class="mx-auto max-w-[1200px] px-6 pt-20 pb-24 sm:px-8 sm:pt-[88px] sm:pb-[112px]">
-        <div class="grid items-center gap-14 lg:grid-cols-2">
-          <div class="max-w-[520px]">
-            <p class="eyebrow eyebrow-accent mb-5">Open-source converter</p>
-            <h1 class="hero-h text-[clamp(38px,5vw,64px)] leading-[1.04] font-medium text-ink">
-              X posts as Markdown you can ship anywhere.
-            </h1>
-            <p class="mt-6 max-w-[440px] text-[17px] leading-[1.6] text-ink-3">
-              Use the live site at <code class="code-chip">x.pcstyle.dev</code> or deploy your own on Vercel. Threads, media, quotes, and X Articles — no paid X API keys on the default path.
-            </p>
-            <div class="mt-9 flex flex-wrap gap-3">
-              <button type="button" data-auth-action="sign-up" class="btn-primary flex h-10 items-center rounded-full px-4 text-[13px]">Create free account</button>
-              <a href="#convert" class="btn-ghost flex h-10 items-center rounded-full px-3.5 text-[13px]">Convert without account</a>
-              <a href="/docs" class="btn-ghost flex h-10 items-center rounded-full px-3.5 text-[13px]">Read the docs</a>
+  <main id="top" class="w-full max-w-full overflow-x-hidden">
+
+    <!-- hero: artistic asymmetry -->
+    <section class="relative overflow-hidden">
+      <div class="hero-wash"></div>
+      <div class="mx-auto grid max-w-[1200px] gap-14 px-6 pt-20 pb-24 sm:px-8 sm:pt-28 lg:grid-cols-12 lg:gap-8 lg:pb-36">
+        <div class="lg:col-span-7" data-hero-stagger>
+          <p class="eyebrow eyebrow-accent">Open source · Free · No account</p>
+          <h1 class="hero-h mt-5 max-w-[13ch] text-[clamp(2.9rem,6.2vw,5.2rem)] leading-[1.02] font-black text-ink">
+            Tweets are just markdown now.
+          </h1>
+          <p class="mt-7 max-w-[46ch] text-[16px] leading-[1.75] text-ink-2 sm:text-[17px]">
+            Treat them that way. Swap <code class="code-chip">x.com</code> for
+            <code class="code-chip">x.pcstyle.dev</code> in any public post URL and the
+            post, its thread, or the full article comes back as Markdown your agent can read.
+          </p>
+
+          <div id="convert" class="mt-10 max-w-[640px] scroll-mt-28">
+            <div class="convert-shell">
+              <form data-convert-form class="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                <label for="x-url" class="sr-only">X status URL</label>
+                <input
+                  id="x-url"
+                  data-convert-input
+                  type="url"
+                  name="url"
+                  required
+                  inputmode="url"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="https://x.com/handle/status/…"
+                  value="${EXAMPLE_X_URL}"
+                  class="convert-input"
+                />
+                <button type="submit" class="btn-primary h-[50px] shrink-0 px-6 text-[14px] sm:min-w-[160px]">
+                  Get Markdown
+                </button>
+              </form>
+              <p class="mt-3 px-1.5 text-[12.5px] leading-relaxed text-ink-4">
+                Opens the converted post in a new tab — the same result as swapping the host by hand.
+              </p>
             </div>
-          </div>
-
-          <div class="hero-terminal">
-            <div class="flex items-center gap-2 border-b border-hair px-4 py-3">
-              <span class="h-3 w-3 rounded-full bg-[#232326]"></span>
-              <span class="h-3 w-3 rounded-full bg-[#232326]"></span>
-              <span class="h-3 w-3 rounded-full bg-[#232326]"></span>
-              <span class="ml-2 font-mono text-[11px] text-ink-4">swap the host</span>
-            </div>
-            <pre class="m-0 overflow-x-auto px-5 py-5 font-mono text-[12.5px] leading-[1.7] text-ink-2"><span class="text-ink-4"># x.com post</span>
-<span class="text-ink-3">https://x.com/${EXAMPLE_HANDLE}/status/…</span>
-
-<span class="text-ink-4"># same path on x.md → Markdown in the browser</span>
-<span class="text-accent">${EXAMPLE_HOSTED_URL}</span>
-
-<span class="text-ink-4"># trq212 (@trq212)</span>
-
-<span class="text-ink-3">Source:</span> https://x.com/${EXAMPLE_HANDLE}/status/…
-<span class="text-ink-3">Stats:</span> 2.1K likes · 412 reposts</pre>
           </div>
         </div>
 
-        <div class="mt-20 grid gap-4 sm:grid-cols-3">
-          <div class="step-tile">
-            <span class="step-num">1</span>
-            <h3 class="text-[15px] font-semibold text-ink">Swap the host</h3>
-            <p class="mt-1.5 text-[14px] leading-relaxed text-ink-3">Replace <code class="code-chip">x.com</code> with <code class="code-chip">x.pcstyle.dev</code> in any public status link.</p>
-          </div>
-          <div class="step-tile">
-            <span class="step-num">2</span>
-            <h3 class="text-[15px] font-semibold text-ink">Get Markdown</h3>
-            <p class="mt-1.5 text-[14px] leading-relaxed text-ink-3">The same path returns the post as Markdown — threads, media, quotes, and X Articles included.</p>
-          </div>
-          <div class="step-tile">
-            <span class="step-num">3</span>
-            <h3 class="text-[15px] font-semibold text-ink">Tune with params</h3>
-            <p class="mt-1.5 text-[14px] leading-relaxed text-ink-3">Append <code class="code-chip">?format=obsidian</code>, <code class="code-chip">?thread=full</code>, and more. <a href="/docs#params" class="text-accent hover:text-[#8a89ff]">All params →</a></p>
+        <div class="lg:col-span-5 lg:self-end" data-hero-card>
+          <div class="float-card lg:-mr-6 lg:-mb-10">
+            <div class="float-card-bar">
+              <span class="truncate">x.pcstyle.dev${EXAMPLE_PATH}</span>
+              <span class="pane-tag pane-tag-good">text/markdown</span>
+            </div>
+            <pre>${heroCard}</pre>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="convert" class="mx-auto max-w-[1200px] scroll-mt-20 px-6 pb-[112px] sm:px-8">
-      <div class="convert-card mx-auto max-w-[620px]">
-        <p class="eyebrow eyebrow-accent mb-3">Try it</p>
-        <h2 class="text-[28px] leading-tight font-medium text-ink">Convert a post</h2>
-        <p class="mt-2 text-[16px] text-ink-3">Paste any public X status URL. Opens Markdown at the same path on this site (includes reply-chain context by default).</p>
-        <form data-convert-form class="mt-7 flex flex-col gap-3 sm:flex-row">
-          <label for="x-url" class="sr-only">X status URL</label>
-          <input
-            id="x-url"
-            data-convert-input
-            type="url"
-            name="url"
-            required
-            inputmode="url"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="https://x.com/handle/status/…"
-            value="${EXAMPLE_X_URL}"
-            class="convert-input"
-          />
-          <button type="submit" class="btn-primary flex h-[42px] shrink-0 items-center justify-center rounded-full px-4 text-[13px]">Get Markdown</button>
-        </form>
-        <p class="mt-4 text-[14px] text-ink-3">
-          Opens <code class="code-chip">${EXAMPLE_PATH}?thread=full</code> here — the same trick as swapping <code class="code-chip">x.com</code> → <code class="code-chip">x.pcstyle.dev</code> in the link.
+    <!-- marquee -->
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee-track">
+        ${marqueeTrack}
+        ${marqueeTrack}
+      </div>
+    </div>
+
+    <!-- interest: gapless bento, before / after -->
+    <section id="how" class="scroll-mt-28">
+      <div class="mx-auto max-w-[1200px] px-6 py-28 sm:px-8 md:py-40">
+        <h2 class="max-w-[22ch] text-[clamp(1.9rem,3.6vw,3rem)] leading-[1.1] font-black tracking-tight text-ink">
+          You see the same post either way. Your agent doesn't.
+        </h2>
+        <div class="bento mt-14">
+          <article class="bento-card bento-a bento-dark" data-rise-card>
+            <div class="flex items-center justify-between gap-3">
+              <p class="min-w-0 truncate font-mono text-[12px]" style="color: var(--color-code-dim)">$ curl x.com${EXAMPLE_PATH}</p>
+              <span class="pane-tag pane-tag-bad shrink-0">no content</span>
+            </div>
+            <pre class="mt-6 overflow-x-auto font-mono text-[12.5px] leading-[1.8] whitespace-pre" style="color: var(--color-code-ink)">${xComOutput}</pre>
+          </article>
+          <article class="bento-card bento-b bento-dark" data-rise-card>
+            <div class="flex items-center justify-between gap-3">
+              <p class="min-w-0 truncate font-mono text-[12px]" style="color: var(--color-code-dim)">$ curl x.pcstyle.dev${EXAMPLE_PATH}</p>
+              <span class="pane-tag pane-tag-good shrink-0">markdown</span>
+            </div>
+            <pre class="mt-6 overflow-x-auto font-mono text-[12.5px] leading-[1.8] whitespace-pre" style="color: var(--color-code-ink)">${mdOutput}</pre>
+          </article>
+          <article class="bento-card bento-c bento-tint" data-rise-card>
+            <h3 class="text-[19px] font-bold text-ink">One host swap, nothing else</h3>
+            <p class="mt-3 text-[14.5px] leading-relaxed text-ink-2">
+              Same path, same status ID. That's a real post converted live:
+              <a href="${EXAMPLE_PATH}?thread=full" target="_blank" rel="noreferrer" class="font-bold text-accent hover:text-accent-deep">see the full conversion →</a>
+            </p>
+          </article>
+          <article class="bento-card bento-d" data-rise-card>
+            <h3 class="text-[19px] font-bold text-ink">Pipe it anywhere</h3>
+            <p class="mt-3 text-[14.5px] leading-relaxed text-ink-2">
+              The response is plain <code class="code-chip">text/markdown</code>, so
+              <code class="code-chip">curl … &gt; post.md</code> drops a tweet straight into your vault.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- desire: scrubbing statement -->
+    <section class="border-t border-line">
+      <div class="mx-auto max-w-[1000px] px-6 py-28 sm:px-8 md:py-44">
+        <p data-scrub-text class="text-[clamp(1.6rem,3.4vw,2.7rem)] leading-[1.35] font-bold tracking-tight text-ink">
+          Your notes, your scripts, and your agents all speak Markdown. X speaks JavaScript. x.md is the translation layer: keep the URL, change the host, read the post.
         </p>
       </div>
     </section>
 
-    <section id="pricing" class="mx-auto max-w-[1200px] scroll-mt-20 px-6 pb-[112px] sm:px-8">
-      <div class="mb-10 max-w-[640px]">
-        <p class="eyebrow eyebrow-accent mb-3">Premium</p>
-        <h2 class="text-[clamp(32px,4vw,48px)] leading-[1.05] font-medium tracking-[-0.03em] text-ink">Free conversion stays free. Premium social workflows use credits.</h2>
-        <p class="mt-4 text-[17px] leading-[1.6] text-ink-3">x.md uses Clerk accounts, Convex-backed API keys, and Autumn + Stripe billing. Autumn is the source of truth for plans, entitlements, checkout, and social credit balances.</p>
-      </div>
-      <div class="grid gap-4 lg:grid-cols-3">
-        <div class="pricing-card">
-          <span class="plan-badge self-start">Free</span>
-          <h3 class="mt-4 text-[28px] font-semibold text-ink">$0<span class="text-[14px] font-normal text-ink-3">/mo</span></h3>
-          <p class="mt-2 text-[14px] text-ink-2">Anonymous conversion, no account needed</p>
-          <ul class="mt-5 space-y-2.5 text-[14px] leading-relaxed text-ink-3">
-            <li class="feature-li">Anonymous X Markdown conversion</li>
-            <li class="feature-li">Social link bundle</li>
-            <li class="feature-li">Conversation map</li>
-            <li class="feature-li">Media manifest</li>
-          </ul>
-        </div>
-        <div class="pricing-card pricing-card-featured">
-          <span class="plan-badge self-start">Starter</span>
-          <h3 class="mt-4 text-[28px] font-semibold text-ink">$5<span class="text-[14px] font-normal text-ink-3">/mo</span></h3>
-          <p class="mt-2 text-[14px] text-ink-2">250 social credits/month</p>
-          <ul class="mt-5 space-y-2.5 text-[14px] leading-relaxed text-ink-3">
-            <li class="feature-li">Obsidian social note templates</li>
-            <li class="feature-li">Quote expansion</li>
-            <li class="feature-li">JSON-LD basic export</li>
-          </ul>
-          <button type="button" data-plan="starter" class="btn-primary mt-6 flex h-10 w-full items-center justify-center rounded-full px-4 text-[13px]">Upgrade with Autumn</button>
-        </div>
-        <div class="pricing-card">
-          <span class="plan-badge self-start">Pro</span>
-          <h3 class="mt-4 text-[28px] font-semibold text-ink">$15<span class="text-[14px] font-normal text-ink-3">/mo</span></h3>
-          <p class="mt-2 text-[14px] text-ink-2">1,500 social credits/month</p>
-          <ul class="mt-5 space-y-2.5 text-[14px] leading-relaxed text-ink-3">
-            <li class="feature-li">Thread briefing and author dossiers</li>
-            <li class="feature-li">Cross-platform parser</li>
-            <li class="feature-li">Context-window safe mode</li>
-            <li class="feature-li">Bulk JSON-LD archive export</li>
-          </ul>
-          <button type="button" data-plan="pro" class="btn-ghost mt-6 flex h-10 w-full items-center justify-center rounded-full px-4 text-[13px]">Upgrade to Pro</button>
-        </div>
-      </div>
-      <div class="mt-6 overflow-x-auto rounded-xl border border-line">
-        <table class="docs-table">
-          <thead><tr><th>Premium feature</th><th>Credits</th><th>API mode</th></tr></thead>
-          <tbody>
-            <tr><td>Quote-post expansion</td><td>1</td><td><code>premium=quote_expansion</code></td></tr>
-            <tr><td>Obsidian social note templates</td><td>1</td><td><code>premium=obsidian_templates</code></td></tr>
-            <tr><td>Thread briefing mode</td><td>3</td><td><code>premium=thread_briefing</code></td></tr>
-            <tr><td>Context-window safe mode</td><td>3</td><td><code>premium=context_safe_mode</code></td></tr>
-            <tr><td>Cross-platform social parser</td><td>3</td><td><code>premium=cross_platform_parser</code></td></tr>
-            <tr><td>Social archive JSON-LD bulk/export</td><td>5</td><td><code>premium=jsonld_bulk_export</code></td></tr>
-            <tr><td>Author dossier</td><td>10</td><td><code>premium=author_dossier</code></td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div id="account" class="account-card mt-6 scroll-mt-20">
+    <!-- desire: pinned split, what comes through -->
+    <section data-pin-section class="border-t border-line">
+      <div class="mx-auto grid max-w-[1200px] gap-12 px-6 py-28 sm:px-8 md:py-40 lg:grid-cols-[0.9fr_1.1fr] lg:gap-20">
         <div>
-          <p class="eyebrow eyebrow-muted mb-2">Account</p>
-          <h3 class="text-[22px] font-semibold text-ink">Sign up to unlock premium workflows and API keys.</h3>
-          <p data-account-status class="mt-2 text-[14px] leading-relaxed text-ink-3">Create a free account first, then upgrade when you need social credits.</p>
-          <p data-api-key-output class="mt-4 hidden rounded-lg border border-line bg-surface p-3 font-mono text-[12px] leading-relaxed text-ink-2"></p>
+          <div data-pin-target class="lg:pr-8">
+            <h2 class="max-w-[14ch] text-[clamp(1.9rem,3.6vw,3rem)] leading-[1.1] font-black tracking-tight text-ink">
+              Nothing important gets dropped.
+            </h2>
+            <p class="mt-5 max-w-[40ch] text-[15.5px] leading-relaxed text-ink-3">
+              Conversion keeps the parts that matter when you're saving a post for later — or feeding it to a model.
+            </p>
+          </div>
         </div>
-        <div class="flex flex-col gap-3 sm:min-w-[220px]">
-          <button type="button" data-auth-action="sign-up" class="btn-primary flex h-10 items-center justify-center rounded-full px-4 text-[13px]">Sign up free</button>
-          <button type="button" data-auth-action="sign-in" class="btn-ghost flex h-10 items-center justify-center rounded-full px-4 text-[13px]">Sign in</button>
-          <a href="/dashboard" data-dashboard-link class="btn-primary hidden h-10 items-center justify-center rounded-full px-4 text-[13px]">Open dashboard</a>
-          <button type="button" data-account-action="create-key" class="btn-ghost hidden h-10 items-center justify-center rounded-full px-4 text-[13px]">Create API key</button>
-          <button type="button" data-account-action="portal" class="btn-ghost hidden h-10 items-center justify-center rounded-full px-4 text-[13px]">Manage billing</button>
-          <button type="button" data-auth-action="sign-out" class="btn-ghost hidden h-10 items-center justify-center rounded-full px-4 text-[13px]">Sign out</button>
+        <div>
+          <div class="through-item">
+            <h3 class="text-[21px] font-bold text-ink">Threads</h3>
+            <p class="mt-3 max-w-[52ch] text-[15.5px] leading-relaxed text-ink-2">
+              The full reply chain comes back by default, numbered in order.
+              Add <code class="code-chip">?thread=off</code> when you only want the one post.
+            </p>
+          </div>
+          <div class="through-item">
+            <h3 class="text-[21px] font-bold text-ink">Media</h3>
+            <p class="mt-3 max-w-[52ch] text-[15.5px] leading-relaxed text-ink-2">
+              Images and video survive as Markdown links instead of disappearing into a player.
+            </p>
+          </div>
+          <div class="through-item">
+            <h3 class="text-[21px] font-bold text-ink">Quote posts</h3>
+            <p class="mt-3 max-w-[52ch] text-[15.5px] leading-relaxed text-ink-2">
+              Quoted posts are nested inline where they appear, not dropped or reduced to a bare link.
+            </p>
+          </div>
+          <div class="through-item">
+            <h3 class="text-[21px] font-bold text-ink">X Articles</h3>
+            <p class="mt-3 max-w-[52ch] text-[15.5px] leading-relaxed text-ink-2">
+              Long-form articles convert with their full body — headings, lists, and embedded posts included.
+            </p>
+          </div>
+          <div class="through-item">
+            <h3 class="text-[21px] font-bold text-ink">Obsidian frontmatter</h3>
+            <p class="mt-3 max-w-[52ch] text-[15.5px] leading-relaxed text-ink-2">
+              <code class="code-chip">?format=obsidian</code> adds YAML frontmatter with author,
+              date, and source URL, ready for your vault.
+            </p>
+          </div>
         </div>
-      </div>
-      <div class="info-banner-muted mt-4">
-        Account API surface: <code class="code-chip">POST /api/billing?plan=starter|pro</code> starts Autumn checkout, <code class="code-chip">POST /api/billing?action=portal</code> opens the Stripe portal through Autumn, and <code class="code-chip">/api/api-keys</code> creates/revokes hashed <code class="code-chip">xmd_...</code> tokens for <code class="code-chip">Authorization: Bearer</code> requests.
       </div>
     </section>
 
-    <section class="border-t border-line">
-      <div class="mx-auto grid max-w-[1200px] items-center gap-8 px-6 py-16 sm:px-8 lg:grid-cols-[1fr_auto]">
-        <div class="max-w-[560px]">
-          <p class="eyebrow eyebrow-muted mb-3">Documentation</p>
-          <h2 class="text-[28px] leading-tight font-medium text-ink">Routes, params, formats, agents, self-hosting.</h2>
-          <p class="mt-3 text-[16px] leading-relaxed text-ink-3">Everything about the API lives in the docs — including the bundled agent skills and the FxTwitter → syndication provider chain.</p>
+    <!-- agents: horizontal accordion -->
+    <section id="agents" class="scroll-mt-28 border-t border-line">
+      <div class="mx-auto max-w-[1200px] px-6 py-28 sm:px-8 md:py-40">
+        <h2 class="max-w-[20ch] text-[clamp(1.9rem,3.6vw,3rem)] leading-[1.1] font-black tracking-tight text-ink">
+          Three ways to point an agent at it.
+        </h2>
+        <div class="acc mt-14">
+          <div class="acc-item" data-open>
+            <button type="button" class="acc-trigger" aria-expanded="true" aria-controls="agent-panel-prompt">
+              <span class="acc-num block">for any agent</span>
+              <span class="mt-3 block text-[20px] font-bold text-ink">Say it in the prompt</span>
+            </button>
+            <div id="agent-panel-prompt" class="acc-body">
+              <p class="max-w-[44ch] text-[14.5px] leading-relaxed text-ink-2">
+                One line is enough: <span class="font-medium text-ink">"To read an X post, swap
+                x.com for x.pcstyle.dev."</span> Every agent that can fetch a URL now reads tweets.
+              </p>
+            </div>
+          </div>
+          <div class="acc-item">
+            <button type="button" class="acc-trigger" aria-expanded="false" aria-controls="agent-panel-skill">
+              <span class="acc-num block">for skills-aware agents</span>
+              <span class="mt-3 block text-[20px] font-bold text-ink">Install the skill</span>
+            </button>
+            <div id="agent-panel-skill" class="acc-body">
+              <p class="max-w-[44ch] text-[14.5px] leading-relaxed text-ink-2">
+                One command teaches Amp, Claude Code, and friends the host swap permanently.
+              </p>
+              <div class="cmd-row mt-5 max-w-[460px]">
+                <code><span class="t-dim">$ </span>${SKILL_CMD}</code>
+                <button type="button" class="copy-btn" data-copy="${SKILL_CMD}">Copy</button>
+              </div>
+            </div>
+          </div>
+          <div class="acc-item">
+            <button type="button" class="acc-trigger" aria-expanded="false" aria-controls="agent-panel-api">
+              <span class="acc-num block">for scripts</span>
+              <span class="mt-3 block text-[20px] font-bold text-ink">Call the API</span>
+            </button>
+            <div id="agent-panel-api" class="acc-body">
+              <p class="max-w-[44ch] text-[14.5px] leading-relaxed text-ink-2">
+                <code class="code-chip">GET /api/convert?url=…</code> returns the same Markdown
+                with JSON and raw variants. <a href="/docs#posts" class="font-bold text-accent hover:text-accent-deep">API reference →</a>
+              </p>
+            </div>
+          </div>
         </div>
-        <div class="flex flex-wrap gap-3">
-          <a href="/docs" class="btn-primary flex h-10 items-center rounded-full px-4 text-[13px]">Open docs</a>
-          <a href="/docs#agents" class="btn-ghost flex h-10 items-center rounded-full px-4 text-[13px]">AI agents</a>
+      </div>
+    </section>
+
+    <!-- action -->
+    <section class="border-t border-line bg-raised">
+      <div class="mx-auto max-w-[1200px] px-6 py-28 text-center sm:px-8 md:py-44">
+        <h2 class="mx-auto max-w-[18ch] text-[clamp(2.2rem,5vw,4rem)] leading-[1.05] font-black tracking-tight text-ink">
+          Read a post the way your agent does.
+        </h2>
+        <div class="mt-10 flex flex-wrap items-center justify-center gap-3">
+          <a href="#convert" class="btn-primary h-[52px] px-7 text-[15px]">Convert a post</a>
+          <a href="https://github.com/pc-style/x-md" target="_blank" rel="noreferrer" class="btn-ghost h-[52px] px-7 text-[15px]">Star on GitHub</a>
         </div>
+        <p class="mt-8 text-[14px] text-ink-3">
+          MIT-licensed. Fork it, deploy to Vercel, and the same swap works on
+          <a href="/docs#deploy" class="font-medium text-accent hover:text-accent-deep">your own domain</a>.
+        </p>
       </div>
     </section>
   </main>
@@ -242,136 +471,7 @@ app.innerHTML = `
 
 setupConvertForm(app)
 setupMobileMenu(app)
-void setupAccountFlow(app)
-
-async function setupAccountFlow(root: HTMLElement) {
-  const clerk = await loadClerk(root)
-  updateAccountUi(root, clerk)
-
-  if (!clerk) return
-
-  clerk.addListener(() => updateAccountUi(root, clerk))
-
-  root.querySelectorAll<HTMLButtonElement>('[data-auth-action]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      try {
-        const action = button.dataset.authAction
-        if (action === 'sign-up') await beginClerkAuth(clerk, 'sign-up')
-        if (action === 'sign-in') await beginClerkAuth(clerk, 'sign-in')
-        if (action === 'sign-out') await clerk.signOut()
-      } catch (error) {
-        setAccountStatus(root, error instanceof Error ? error.message : 'Unable to start account flow.')
-      }
-    })
-  })
-
-  root.querySelectorAll<HTMLButtonElement>('[data-plan]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const plan = button.dataset.plan
-      if (!plan) return
-      if (!clerk.user) {
-        await beginClerkAuth(clerk, 'sign-up')
-        return
-      }
-      await postWithClerkToken(clerk, button, `/api/billing?plan=${encodeURIComponent(plan)}`, 'Opening checkout…', (payload) => {
-        if (!payload.url) throw new Error('Checkout unavailable')
-        window.location.href = payload.url
-      })
-    })
-  })
-
-  root.querySelector<HTMLButtonElement>('[data-account-action="portal"]')?.addEventListener('click', async (event) => {
-    await postWithClerkToken(clerk, event.currentTarget as HTMLButtonElement, '/api/billing?action=portal', 'Opening portal…', (payload) => {
-      if (!payload.url) throw new Error('Portal unavailable')
-      window.location.href = payload.url
-    })
-  })
-
-  root.querySelector<HTMLButtonElement>('[data-account-action="create-key"]')?.addEventListener('click', async (event) => {
-    await postWithClerkToken(clerk, event.currentTarget as HTMLButtonElement, '/api/api-keys', 'Creating key…', (payload) => {
-      const output = root.querySelector<HTMLElement>('[data-api-key-output]')
-      if (!payload.apiKey || !output) throw new Error('API key unavailable')
-      output.classList.remove('hidden')
-      output.textContent = `Copy this key now. It will not be shown again:
-${payload.apiKey}`
-    })
-  })
-}
-
-async function loadClerk(root: HTMLElement): Promise<ClerkInstance | null> {
-  if (!CLERK_PUBLISHABLE_KEY) {
-    root.querySelectorAll<HTMLButtonElement>('[data-auth-action], [data-plan], [data-account-action]').forEach((button) => {
-      button.disabled = true
-    })
-    setAccountStatus(root, 'Clerk is not configured on this deploy yet. Add NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY to enable sign-up.')
-    return null
-  }
-
-  return loadClerkInstance()
-}
-
-function updateAccountUi(root: HTMLElement, clerk: ClerkInstance | null) {
-  const signedIn = !!clerk?.user
-  const email = clerk?.user?.primaryEmailAddress?.emailAddress ?? clerk?.user?.username ?? 'your account'
-  const userButton = root.querySelector<HTMLDivElement>('[data-user-button]')
-  root.querySelectorAll<HTMLElement>('[data-auth-action="sign-up"], [data-auth-action="sign-in"]').forEach((el) => {
-    el.classList.toggle('hidden', signedIn)
-  })
-  root.querySelectorAll<HTMLElement>('[data-auth-action="sign-out"], [data-account-action], [data-dashboard-link]').forEach((el) => {
-    el.classList.toggle('hidden', !signedIn)
-    el.classList.toggle('flex', signedIn)
-  })
-  if (userButton && clerk) {
-    if (signedIn) {
-      userButton.classList.remove('hidden')
-      if (!userButton.dataset.mounted) {
-        clerk.mountUserButton(userButton, { showName: false })
-        userButton.dataset.mounted = '1'
-      }
-    } else {
-      if (userButton.dataset.mounted) {
-        clerk.unmountUserButton(userButton)
-        delete userButton.dataset.mounted
-      }
-      userButton.classList.add('hidden')
-    }
-  }
-  setAccountStatus(root,
-    signedIn
-      ? `Signed in as ${email}. You can upgrade, manage billing, or create an API key for agent access.`
-      : 'Create a free account first, then upgrade when you need social credits.',
-  )
-}
-
-function setAccountStatus(root: HTMLElement, message: string) {
-  const status = root.querySelector<HTMLElement>('[data-account-status]')
-  if (status) status.textContent = message
-}
-
-async function postWithClerkToken(
-  clerk: ClerkInstance,
-  button: HTMLButtonElement,
-  path: string,
-  pendingLabel: string,
-  onSuccess: (payload: Record<string, string>) => void,
-) {
-  button.disabled = true
-  const original = button.textContent
-  button.textContent = pendingLabel
-  try {
-    const token = await clerk.session?.getToken()
-    const response = await fetch(path, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    })
-    const payload = await response.json() as Record<string, string>
-    if (!response.ok) throw new Error(payload.error ?? 'Request failed')
-    onSuccess(payload)
-    button.textContent = original
-    button.disabled = false
-  } catch (error) {
-    button.textContent = error instanceof Error ? error.message : 'Request failed'
-    setTimeout(() => { button.textContent = original }, 2200)
-    button.disabled = false
-  }
-}
+setupTheme(app)
+setupCopyButtons(app)
+setupAccordion(app)
+setupMotion(app)

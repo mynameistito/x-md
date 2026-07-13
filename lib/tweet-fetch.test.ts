@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { ConvertError } from './errors.js'
 
 vi.mock('./fxtwitter.js', () => ({
+  fetchFxConversationReplies: vi.fn(),
   fetchFxFullThread: vi.fn(),
   fetchFxStatus: vi.fn(),
 }))
@@ -19,7 +20,7 @@ vi.mock('./firecrawl.js', () => ({
 }))
 
 import { fetchPosts } from './tweet-fetch.js'
-import { fetchFxFullThread, fetchFxStatus } from './fxtwitter.js'
+import { fetchFxConversationReplies, fetchFxFullThread, fetchFxStatus } from './fxtwitter.js'
 import { fetchSyndicationStatus } from './syndication.js'
 import { fetchContextDevStatus } from './contextdev.js'
 import { fetchFirecrawlStatus } from './firecrawl.js'
@@ -54,7 +55,7 @@ describe('fetchPosts provider fallbacks', () => {
     const result = await fetchPosts('alice', '123', 'off')
 
     expect(result).toEqual({
-      tweets: [{ id: '123', text: 'from contextdev' }],
+      tweets: [{ id: '123', text: 'from contextdev', context: 'post' }],
       source: 'contextdev',
     })
     expect(fetchContextDevStatus).toHaveBeenCalledWith('alice', '123')
@@ -76,7 +77,7 @@ describe('fetchPosts provider fallbacks', () => {
     const result = await fetchPosts('alice', '123', 'off')
 
     expect(result).toEqual({
-      tweets: [{ id: '123', text: 'from firecrawl' }],
+      tweets: [{ id: '123', text: 'from firecrawl', context: 'post' }],
       source: 'firecrawl',
     })
     expect(fetchContextDevStatus).toHaveBeenCalledWith('alice', '123')
@@ -100,9 +101,64 @@ describe('fetchPosts provider fallbacks', () => {
 
     const result = await fetchPosts('alice', '123', 'full')
 
-    expect(result).toEqual({ tweets: [{ id: '1', text: 'thread' }], source: 'fxtwitter' })
+    expect(result).toEqual({ tweets: [{ id: '1', text: 'thread', context: 'thread' }], source: 'fxtwitter' })
     expect(fetchFxFullThread).toHaveBeenCalledWith('123')
     expect(fetchFxStatus).not.toHaveBeenCalled()
     expect(fetchContextDevStatus).not.toHaveBeenCalled()
+  })
+
+  test('appends top replies in API order, caps, dedupes, and labels context', async () => {
+    vi.mocked(fetchFxFullThread).mockResolvedValue([
+      { id: '1', text: 'parent' }, { id: '2', text: 'post' }, { id: '3', text: 'continuation' },
+    ])
+    vi.mocked(fetchFxConversationReplies).mockResolvedValue([
+      { id: '3', text: 'duplicate' }, { id: '4', text: 'reply' },
+    ])
+
+    const result = await fetchPosts('alice', '2', 'full')
+
+    expect(fetchFxConversationReplies).toHaveBeenCalledWith('2', 'likes', 10)
+    expect(result.tweets.map(({ id, context }) => ({ id, context }))).toEqual([
+      { id: '1', context: 'parent' }, { id: '2', context: 'post' },
+      { id: '3', context: 'thread' }, { id: '4', context: 'reply' },
+    ])
+  })
+
+  test('recent maps to recency and conversation failure keeps the thread', async () => {
+    vi.mocked(fetchFxFullThread).mockResolvedValue([{ id: '2', text: 'post' }])
+    vi.mocked(fetchFxConversationReplies).mockRejectedValue(new Error('conversation unavailable'))
+    const result = await fetchPosts('alice', '2', 'full', 'full', 'recent')
+    expect(fetchFxConversationReplies).toHaveBeenCalledWith('2', 'recency', 10)
+    expect(result.tweets).toEqual([{ id: '2', text: 'post', context: 'post' }])
+  })
+
+  test('thread context and replies=off both opt out of conversation requests', async () => {
+    vi.mocked(fetchFxFullThread).mockResolvedValue([{ id: '2' }])
+    await fetchPosts('alice', '2', 'full', 'thread', 'top')
+    await fetchPosts('alice', '2', 'full', 'full', 'off')
+    expect(fetchFxConversationReplies).not.toHaveBeenCalled()
+  })
+
+  test('thread context retains only the focal author while replies=off preserves full parents', async () => {
+    vi.mocked(fetchFxFullThread).mockResolvedValue([
+      { id: '1', author: { screen_name: 'other' } },
+      { id: '2', author: { screen_name: 'Alice' } },
+      { id: '3', author: { screen_name: 'alice' } },
+    ])
+    const authorThread = await fetchPosts('alice', '2', 'full', 'thread', 'top')
+    expect(authorThread.tweets.map((tweet) => tweet.id)).toEqual(['2', '3'])
+    const noReplies = await fetchPosts('alice', '2', 'full', 'full', 'off')
+    expect(noReplies.tweets.map((tweet) => tweet.id)).toEqual(['1', '2', '3'])
+  })
+
+  test('uses the requested handle when focal author metadata is missing', async () => {
+    vi.mocked(fetchFxFullThread).mockResolvedValue([
+      { id: '1', author: { screen_name: 'other' } },
+      { id: '2' },
+      { id: '3', author: { screen_name: 'Alice' } },
+    ])
+
+    const result = await fetchPosts('alice', '2', 'full', 'thread', 'top')
+    expect(result.tweets.map((tweet) => tweet.id)).toEqual(['2', '3'])
   })
 })

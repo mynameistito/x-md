@@ -1,14 +1,38 @@
 import type { Connect } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
-import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { browse, browseResponse, type BrowseResource } from '../lib/browse'
+import { ConvertError as BrowseError } from '../lib/errors'
+import { setCorsHeaders, wantsJson } from '../lib/http'
 import {
   acceptPrefersHtml,
   ConvertError,
   convertTweet,
   markdownResponse,
 } from '../lib/converter'
-import { createVercelRequest, createVercelResponse, readJsonBody } from '../lib/vercel-dev'
+
+const HANDLE = '[A-Za-z0-9_]{1,15}'
+
+function respondJson(res: ServerResponse, status: number, payload: unknown): void {
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json')
+  res.end(JSON.stringify(payload))
+}
+
+/** Handles OPTIONS preflight and rejects non-GET/HEAD methods. Returns true if the request was fully handled. */
+function guardMethod(req: IncomingMessage, res: ServerResponse): boolean {
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204
+    res.end()
+    return true
+  }
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.setHeader('Allow', 'GET, HEAD, OPTIONS')
+    respondJson(res, 405, { error: 'Method not allowed' })
+    return true
+  }
+  return false
+}
 
 async function handleConvert(
   url: URL,
@@ -17,21 +41,18 @@ async function handleConvert(
 ): Promise<boolean> {
   const pathname = url.pathname
 
-  const statusMatch = pathname.match(/^\/([^/]+)\/status\/(\d+)\/?$/)
+  const statusMatch = pathname.match(new RegExp(`^\/(${HANDLE})\/status\/(\\d+)\/?$`))
   const isApi = pathname === '/api/convert'
 
   if (!isApi && !statusMatch) return false
 
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    res.statusCode = 405
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ error: 'Method not allowed' }))
-    return true
-  }
+  setCorsHeaders(res)
+  if (guardMethod(req, res)) return true
 
   const accept = String(req.headers.accept ?? '')
-  const asJson = accept.includes('application/json')
-  const asHtml = acceptPrefersHtml(accept)
+  const requestedFormat = url.searchParams.get('format')
+  const asJson = wantsJson(requestedFormat, accept)
+  const asHtml = !requestedFormat && !asJson && acceptPrefersHtml(accept)
 
   try {
     const result = await convertTweet({
@@ -42,6 +63,9 @@ async function handleConvert(
       thread: url.searchParams.get('thread'),
       userinfo: url.searchParams.get('userinfo'),
       nocache: url.searchParams.get('nocache'),
+      full: url.searchParams.get('full'),
+      context: url.searchParams.get('context'),
+      replies: url.searchParams.get('replies'),
     })
 
     const { status, headers, body } = markdownResponse(result, asJson, asHtml)
@@ -56,54 +80,45 @@ async function handleConvert(
     }
   } catch (error) {
     if (error instanceof ConvertError) {
-      res.statusCode = error.status
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ error: error.message, code: error.code }))
+      respondJson(res, error.status, { error: error.message, code: error.code })
     } else {
       console.error(error)
-      res.statusCode = 500
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ error: 'Internal converter error' }))
+      respondJson(res, 500, { error: 'Internal converter error' })
     }
   }
 
   return true
 }
 
-type ApiHandler = (req: VercelRequest, res: VercelResponse) => Promise<unknown>
-
-const API_HANDLERS: Record<string, () => Promise<{ default: ApiHandler }>> = {
-  '/api/billing': () => import('../api/billing'),
-  '/api/account': () => import('../api/account'),
-  '/api/api-keys': () => import('../api/api-keys'),
-}
-
-async function handleVercelApiRoute(
-  pathname: string,
-  req: IncomingMessage,
-  res: ServerResponse,
-  url: URL,
-): Promise<boolean> {
-  const load = API_HANDLERS[pathname]
-  if (!load) return false
-
-  let body: unknown
-  if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH' || req.method === 'DELETE') {
-    try {
-      body = await readJsonBody(req)
-    } catch (error) {
-      res.statusCode = 400
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({
-        error: error instanceof Error ? error.message : 'Invalid request body',
-        code: 'invalid_body',
-      }))
-      return true
+async function handleBrowse(url: URL, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  const path = url.pathname.replace(/\/$/, '') || '/'
+  let resource: BrowseResource | undefined
+  let handle: string | undefined
+  if (path === '/api/browse') resource = (url.searchParams.get('resource') ?? undefined) as BrowseResource | undefined
+  else if (path === '/search') resource = 'search'
+  else {
+    const match = path.match(new RegExp(`^\/(${HANDLE})(?:\/(followers|following))?$`))
+    if (!match || ['api', 'docs', 'search'].includes(match[1] ?? '')) return false
+    handle = match[1]
+    resource = (match[2] as BrowseResource | undefined) ?? 'profile'
+  }
+  if (!resource) return false
+  setCorsHeaders(res)
+  if (guardMethod(req, res)) return true
+  try {
+    const result = await browse({ resource, handle: handle ?? url.searchParams.get('handle'), q: url.searchParams.get('q'), feed: url.searchParams.get('feed'), cursor: url.searchParams.get('cursor'), page: url.searchParams.get('page'), limit: url.searchParams.get('limit'), full: url.searchParams.get('full'), format: url.searchParams.get('format'), nocache: url.searchParams.get('nocache') })
+    const response = browseResponse(result, wantsJson(url.searchParams.get('format'), String(req.headers.accept ?? '')))
+    res.statusCode = response.status
+    for (const [key, value] of Object.entries(response.headers)) res.setHeader(key, value)
+    res.end(req.method === 'HEAD' ? undefined : response.body)
+  } catch (error) {
+    if (error instanceof BrowseError) {
+      respondJson(res, error.status, { error: error.message, code: error.code })
+    } else {
+      console.error(error)
+      respondJson(res, 500, { error: 'Internal browse error' })
     }
   }
-
-  const handler = (await load()).default
-  await handler(createVercelRequest(req, url, body), createVercelResponse(res))
   return true
 }
 
@@ -115,14 +130,8 @@ function installConvertMiddleware(middlewares: Connect.Server) {
           next()
           return
         }
-        if (req.url === '/dashboard' || req.url.startsWith('/dashboard?')) {
-          req.url = '/dashboard.html'
-          next()
-          return
-        }
         const url = new URL(req.url, 'http://localhost')
-        if (await handleVercelApiRoute(url.pathname, req, res, url)) return
-        const handled = await handleConvert(url, req, res)
+        const handled = await handleConvert(url, req, res) || await handleBrowse(url, req, res)
         if (!handled) next()
       } catch (error) {
         next(error as Error)

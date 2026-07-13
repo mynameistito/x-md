@@ -1,7 +1,7 @@
 {
   "name": "x-md",
   "version": "1.0.0",
-  "description": "Open-source X/Twitter to Markdown converter (FxTwitter + syndication + optional Context.dev/Firecrawl)",
+  "description": "Agent-friendly, read-only X browser with compact Markdown and JSON output",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -16,6 +16,9 @@
     "x",
     "twitter",
     "markdown",
+    "agents",
+    "search",
+    "profiles",
     "converter",
     "obsidian",
     "vercel",
@@ -25,22 +28,19 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "read-x": "bun scripts/read-x.ts",
+    "browse-x": "bash skills/browse-x/scripts/browse-x.sh",
     "test": "vitest --run"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
     "@vercel/node": "^5.8.4",
-    "atmn": "^1.1.8",
     "typescript": "~6.0.2",
     "vite": "^8.0.12",
     "vitest": "^4.1.8"
   },
   "dependencies": {
-    "@clerk/backend": "^3.6.1",
-    "@clerk/clerk-js": "^6.16.0",
     "@tailwindcss/vite": "^4.3.0",
-    "convex": "^1.41.0",
+    "gsap": "^3.15.0",
     "tailwindcss": "^4.3.0"
   }
 }

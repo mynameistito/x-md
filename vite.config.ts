@@ -10,14 +10,12 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-    envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
     plugins: [tailwindcss(), apiDevPlugin()],
     build: {
       rollupOptions: {
         input: {
           main: resolve(import.meta.dirname, 'index.html'),
           docs: resolve(import.meta.dirname, 'docs.html'),
-          dashboard: resolve(import.meta.dirname, 'dashboard.html'),
         },
       },
     },

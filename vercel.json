@@ -12,16 +12,28 @@
       "destination": "/docs.html"
     },
     {
-      "source": "/dashboard",
-      "destination": "/dashboard.html"
-    },
-    {
-      "source": "/dashboard/",
-      "destination": "/dashboard.html"
-    },
-    {
-      "source": "/:handle/status/:id",
+      "source": "/:handle([A-Za-z0-9_]{1,15})/status/:id(\\d+)",
       "destination": "/api/convert?handle=:handle&id=:id"
+    },
+    {
+      "source": "/search",
+      "destination": "/api/browse?resource=search"
+    },
+    {
+      "source": "/:handle([A-Za-z0-9_]{1,15})/followers",
+      "destination": "/api/browse?resource=followers&handle=:handle"
+    },
+    {
+      "source": "/:handle([A-Za-z0-9_]{1,15})/following",
+      "destination": "/api/browse?resource=following&handle=:handle"
+    },
+    {
+      "source": "/api",
+      "destination": "/404"
+    },
+    {
+      "source": "/:handle([A-Za-z0-9_]{1,15})",
+      "destination": "/api/browse?resource=profile&handle=:handle"
     }
   ],
   "redirects": [
@@ -49,8 +61,8 @@
       "source": "/api/(.*)",
       "headers": [
         { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, HEAD, POST, DELETE, OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Accept, Authorization, Content-Type" }
+        { "key": "Access-Control-Allow-Methods", "value": "GET, HEAD, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Accept, Content-Type" }
       ]
     }
   ]

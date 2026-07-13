@@ -3,3 +3,6 @@ Allow: /
 Disallow: /api/
 
 Sitemap: https://x.pcstyle.dev/sitemap.xml
+
+# Agent-readable product and route reference
+# https://x.pcstyle.dev/llms.txt
