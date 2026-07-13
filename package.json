@@ -31,16 +31,13 @@
   "devDependencies": {
     "@types/node": "^25.9.1",
     "@vercel/node": "^5.8.4",
-    "atmn": "^1.1.8",
     "typescript": "~6.0.2",
     "vite": "^8.0.12",
     "vitest": "^4.1.8"
   },
   "dependencies": {
-    "@clerk/backend": "^3.6.1",
-    "@clerk/clerk-js": "^6.16.0",
     "@tailwindcss/vite": "^4.3.0",
-    "convex": "^1.41.0",
+    "gsap": "^3.15.0",
     "tailwindcss": "^4.3.0"
   }
 }

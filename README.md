@@ -117,96 +117,11 @@ Production domain: `https://x.pcstyle.dev` (canonical URLs and OG tags in `index
 ```text
 api/convert.ts     Vercel serverless handler
 lib/               Fetch providers, markdown rendering, cache
-src/               Vite landing page
+src/               Vite landing + docs pages
+docs.html          Dedicated documentation page
 public/            Static assets, robots.txt, sitemap.xml
 ```
 
 ## License
 
 [MIT](LICENSE)
-
-## Premium monetization setup
-
-The basic converter remains free and anonymous. Premium modes are gated by Clerk auth or user API keys, Convex audit/API-key storage, and Autumn entitlements backed by Stripe.
-
-Plans and credits:
-
-| Plan | Price | Included |
-|---|---:|---|
-| Free | $0/mo | Basic anonymous X Markdown conversion, social link bundle, conversation map, media manifest |
-| Starter | $5/mo | 250 social credits/mo, Obsidian templates, quote expansion, JSON-LD basic export |
-| Pro | $15/mo | 1,500 social credits/mo, thread briefing, author dossiers, cross-platform parser, context-window safe mode, bulk JSON-LD |
-
-Premium feature costs:
-
-| Feature | Credits | API mode |
-|---|---:|---|
-| Quote-post expansion | 1 | `premium=quote_expansion` |
-| Obsidian social note templates | 1 | `premium=obsidian_templates` |
-| Thread briefing mode | 3 | `premium=thread_briefing` |
-| Context-window safe mode | 3 | `premium=context_safe_mode` |
-| Cross-platform social parser | 3 | `premium=cross_platform_parser` |
-| Social archive JSON-LD bulk/export | 5 | `premium=jsonld_bulk_export` |
-| Author dossier | 10 | `premium=author_dossier` |
-
-Required env vars for the premium stack (`VITE_CLERK_PUBLISHABLE_KEY` is the Vite browser key; keep `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` too if provisioning through Vercel/Clerk integrations):
-
-```bash
-VITE_CLERK_PUBLISHABLE_KEY=
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
-CLERK_SECRET_KEY=
-CLERK_JWT_ISSUER_DOMAIN=
-CONVEX_DEPLOYMENT=
-NEXT_PUBLIC_CONVEX_URL=
-CONVEX_SERVER_SECRET=
-AUTUMN_SECRET_KEY=
-AUTUMN_WEBHOOK_SECRET=
-```
-
-Set `CLERK_JWT_ISSUER_DOMAIN` in Convex as well as local/Vercel env so `convex/auth.config.ts` can validate Clerk JWTs for the `convex` JWT template.
-
-Autumn is the source of truth for plans, feature credits, checkout, customer portal, and Stripe subscription state. Do not create or mutate Stripe products/prices/subscriptions directly for this flow; configure plans/features in Autumn and let Autumn sync Stripe.
-
-Autumn config lives in `autumn.config.ts` (pulled from the Autumn dashboard with `bunx atmn pull`, pushed with `bunx atmn push`). Sandbox plans already defined there:
-
-| Plan ID | Price | Social credits |
-|---|---:|---:|
-| `free` | $0 | auto-enabled |
-| `starter` | $5/mo | 250/mo |
-| `pro` | $15/mo | 1,500/mo |
-| `credit_top_up` | $5 one-off | +500 credits (add-on) |
-
-Customers are **individual Clerk users** (`customerId` = Clerk `userId`). There is no org/workspace billing model in x.md.
-
-Premium API flow:
-
-1. Resolve auth from Clerk bearer token or `Authorization: Bearer xmd_...` API key.
-2. Mirror the Clerk user into Convex and get/create the Autumn customer with the Clerk user ID as `customerId`.
-3. For premium work, call Autumn `POST /v1/check` with `feature_id: "social_credits"`, `required_balance`, and `send_event: true` before doing expensive work.
-4. Return `401` for missing auth and stable `402` paywall responses when Autumn denies allowance.
-5. Log request and feature-run records in Convex when configured.
-
-Account and sign-up flow:
-
-- The homepage shows obvious `Sign up free`, `Sign in`, `Create API key`, and `Manage billing` actions when `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is configured.
-- Pricing upgrade buttons open Clerk sign-up first for anonymous users, then call billing endpoints with the Clerk bearer token.
-
-Account endpoints:
-
-- `GET /api/account` returns the signed-in user's Autumn plan, credit balance, and products.
-- `GET /dashboard` is the account UI for plan, credits, and API keys.
-- `POST /api/billing?plan=starter|pro` starts Autumn checkout (`redirectMode: always`).
-- `POST /api/billing?action=portal` opens the Autumn/Stripe customer portal.
-- `GET /api/api-keys` lists hashed API-key records for the authenticated user.
-- `POST /api/api-keys` creates an `xmd_...` API key and stores only its SHA-256 hash in Convex.
-- `DELETE /api/api-keys` revokes by `keyHash` or plaintext `apiKey`.
-- `POST /api/autumn-webhook` verifies the raw body with `AUTUMN_WEBHOOK_SECRET`, then mirrors `billing.updated` events into Convex `billingCustomers` for account debugging.
-
-Local dev (`bun run dev`) proxies `/api/billing`, `/api/account`, and `/api/api-keys` through the same Vercel handlers used in production so the dashboard and homepage billing buttons work without `vercel dev`.
-
-Deploy Convex separately as part of release setup:
-
-```bash
-bunx convex dev      # initial link/codegen
-bunx convex deploy   # production Convex functions/schema
-```

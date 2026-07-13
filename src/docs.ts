@@ -28,10 +28,10 @@ app.innerHTML = `
   <a href="#docs-content" class="skip-link">Skip to content</a>
   ${headerHtml({ page: 'docs' })}
 
-  <main class="mx-auto max-w-[1200px] px-6 pb-[112px] sm:px-8">
-    <div class="pt-14 pb-12">
+  <main class="mx-auto max-w-[1120px] px-6 pb-[112px] sm:px-8">
+    <div class="pt-16 pb-12 sm:pt-20">
       <p class="eyebrow eyebrow-accent mb-3">Documentation</p>
-      <h1 class="hero-h text-[clamp(32px,4vw,48px)] leading-[1.05] font-medium text-ink">Setup and API</h1>
+      <h1 class="hero-h max-w-4xl text-[clamp(2.2rem,4.5vw,3.4rem)] leading-[1.05] font-semibold text-ink">Setup and API</h1>
       <p class="mt-4 max-w-[560px] text-[17px] leading-[1.6] text-ink-3">Use the hosted converter as-is, or fork and deploy your own stack on Vercel.</p>
     </div>
 
@@ -152,11 +152,6 @@ Accept: text/markdown
                   <td><code>url</code></td>
                   <td>—</td>
                   <td class="text-ink-2">Encoded X status URL (<code class="code-chip">/api/convert</code> only; path routes omit this)</td>
-                </tr>
-                <tr>
-                  <td><code>premium</code></td>
-                  <td>—</td>
-                  <td class="text-ink-2">Authenticated premium mode; requires Clerk JWT or <code class="code-chip">Authorization: Bearer xmd_...</code></td>
                 </tr>
               </tbody>
             </table>

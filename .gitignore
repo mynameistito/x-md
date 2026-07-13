@@ -36,3 +36,4 @@ src/assets/
 
 x.md.ignore*
 .firecrawl/
+.env*
