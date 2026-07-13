@@ -103,6 +103,13 @@ export function setupMobileMenu(root: HTMLElement) {
 export function setupTheme(root: HTMLElement) {
   const toggle = root.querySelector<HTMLButtonElement>('[data-theme-toggle]')
   if (!toggle) return
+  const storedTheme = () => {
+    try {
+      return localStorage.getItem('x-md-theme')
+    } catch {
+      return null
+    }
+  }
 
   const apply = (theme: 'light' | 'dark') => {
     document.documentElement.dataset.theme = theme
@@ -116,13 +123,17 @@ export function setupTheme(root: HTMLElement) {
 
   toggle.addEventListener('click', () => {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'
-    localStorage.setItem('x-md-theme', next)
+    try {
+      localStorage.setItem('x-md-theme', next)
+    } catch {
+      // Storage can be unavailable in sandboxed or privacy-restricted contexts.
+    }
     apply(next)
   })
 
   const preference = matchMedia('(prefers-color-scheme: dark)')
   preference.addEventListener('change', (event) => {
-    if (!localStorage.getItem('x-md-theme')) apply(event.matches ? 'dark' : 'light')
+    if (!storedTheme()) apply(event.matches ? 'dark' : 'light')
   })
 
   apply(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light')
