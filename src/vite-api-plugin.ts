@@ -1,12 +1,22 @@
 import type { Connect } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
+import { browse, browseResponse, type BrowseResource } from '../lib/browse'
+import { ConvertError as BrowseError } from '../lib/errors'
 import {
   acceptPrefersHtml,
   ConvertError,
   convertTweet,
   markdownResponse,
 } from '../lib/converter'
+
+const HANDLE = '[A-Za-z0-9_]{1,15}'
+
+function setCors(res: ServerResponse): void {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Accept, Content-Type')
+}
 
 async function handleConvert(
   url: URL,
@@ -15,21 +25,29 @@ async function handleConvert(
 ): Promise<boolean> {
   const pathname = url.pathname
 
-  const statusMatch = pathname.match(/^\/([^/]+)\/status\/(\d+)\/?$/)
+  const statusMatch = pathname.match(new RegExp(`^\/(${HANDLE})\/status\/(\\d+)\/?$`))
   const isApi = pathname === '/api/convert'
 
   if (!isApi && !statusMatch) return false
 
+  setCors(res)
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204
+    res.end()
+    return true
+  }
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.statusCode = 405
+    res.setHeader('Allow', 'GET, HEAD, OPTIONS')
     res.setHeader('Content-Type', 'application/json')
     res.end(JSON.stringify({ error: 'Method not allowed' }))
     return true
   }
 
   const accept = String(req.headers.accept ?? '')
-  const asJson = accept.includes('application/json')
-  const asHtml = acceptPrefersHtml(accept)
+  const asJson = url.searchParams.get('format') === 'json' || accept.includes('application/json')
+  const asHtml = !asJson && acceptPrefersHtml(accept)
 
   try {
     const result = await convertTweet({
@@ -40,6 +58,9 @@ async function handleConvert(
       thread: url.searchParams.get('thread'),
       userinfo: url.searchParams.get('userinfo'),
       nocache: url.searchParams.get('nocache'),
+      full: url.searchParams.get('full'),
+      context: url.searchParams.get('context'),
+      replies: url.searchParams.get('replies'),
     })
 
     const { status, headers, body } = markdownResponse(result, asJson, asHtml)
@@ -68,6 +89,46 @@ async function handleConvert(
   return true
 }
 
+async function handleBrowse(url: URL, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  const path = url.pathname.replace(/\/$/, '') || '/'
+  let resource: BrowseResource | undefined
+  let handle: string | undefined
+  if (path === '/api/browse') resource = (url.searchParams.get('resource') ?? undefined) as BrowseResource | undefined
+  else if (path === '/search') resource = 'search'
+  else {
+    const match = path.match(new RegExp(`^\/(${HANDLE})(?:\/(followers|following))?$`))
+    if (!match || ['api', 'docs', 'search'].includes(match[1] ?? '')) return false
+    handle = match[1]
+    resource = (match[2] as BrowseResource | undefined) ?? 'profile'
+  }
+  if (!resource) return false
+  setCors(res)
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204
+    res.end()
+    return true
+  }
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.statusCode = 405
+    res.setHeader('Allow', 'GET, HEAD, OPTIONS')
+    res.end(JSON.stringify({ error: 'Method not allowed' }))
+    return true
+  }
+  try {
+    const result = await browse({ resource, handle: handle ?? url.searchParams.get('handle'), q: url.searchParams.get('q'), feed: url.searchParams.get('feed'), cursor: url.searchParams.get('cursor'), page: url.searchParams.get('page'), limit: url.searchParams.get('limit'), full: url.searchParams.get('full'), format: url.searchParams.get('format'), nocache: url.searchParams.get('nocache') })
+    const response = browseResponse(result, url.searchParams.get('format') === 'json' || String(req.headers.accept ?? '').includes('application/json'))
+    res.statusCode = response.status
+    for (const [key, value] of Object.entries(response.headers)) res.setHeader(key, value)
+    res.end(req.method === 'HEAD' ? undefined : response.body)
+  } catch (error) {
+    const known = error instanceof BrowseError
+    res.statusCode = known ? error.status : 500
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify(known ? { error: error.message, code: error.code } : { error: 'Internal browse error' }))
+  }
+  return true
+}
+
 function installConvertMiddleware(middlewares: Connect.Server) {
   middlewares.use((req, res, next) => {
     void (async () => {
@@ -77,7 +138,7 @@ function installConvertMiddleware(middlewares: Connect.Server) {
           return
         }
         const url = new URL(req.url, 'http://localhost')
-        const handled = await handleConvert(url, req, res)
+        const handled = await handleConvert(url, req, res) || await handleBrowse(url, req, res)
         if (!handled) next()
       } catch (error) {
         next(error as Error)

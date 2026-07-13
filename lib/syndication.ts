@@ -23,7 +23,11 @@ interface SyndicationMedia {
   type?: string
   media_url_https?: string
   url?: string
+  original_info?: { width?: number; height?: number }
+  sizes?: { large?: { w?: number; h?: number } }
   video_info?: {
+    duration_millis?: number
+    aspect_ratio?: [number, number]
     variants?: Array<{ url?: string; content_type?: string; bitrate?: number }>
   }
 }
@@ -46,17 +50,25 @@ interface SyndicationTweet {
   photos?: SyndicationMedia[]
   video?: SyndicationMedia
   quoted_status_result?: { result?: { legacy?: SyndicationTweet; tweet?: SyndicationTweet } }
+  quoted_tweet?: SyndicationTweet
   article?: SyndicationArticle
   entities?: { media?: SyndicationMedia[] }
 }
 
 function mapMedia(raw: SyndicationTweet): FxMedia | undefined {
-  const items: SyndicationMedia[] = [
-    ...(raw.mediaDetails ?? []),
+  const fallbackItems = [
     ...(raw.photos ?? []),
-    ...(raw.entities?.media ?? []),
     ...(raw.video ? [raw.video] : []),
+    ...(raw.entities?.media ?? []),
   ]
+  const candidates = raw.mediaDetails?.length ? raw.mediaDetails : fallbackItems
+  const seenMedia = new Set<string>()
+  const items = candidates.filter((item) => {
+    const key = item.media_url_https ?? item.url ?? item.video_info?.variants?.[0]?.url
+    if (!key || seenMedia.has(key)) return false
+    seenMedia.add(key)
+    return true
+  })
   if (items.length === 0) return undefined
 
   const photos: FxMediaItem[] = []
@@ -69,13 +81,18 @@ function mapMedia(raw: SyndicationTweet): FxMedia | undefined {
     const videoVariant = m.video_info?.variants
       ?.filter((v) => v.content_type?.includes('video/mp4'))
       .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0))[0]
+    const variants = m.video_info?.variants
+      ?.filter((v): v is { url: string; content_type?: string; bitrate?: number } => Boolean(v.url && v.content_type?.includes('video/mp4')))
+      .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0))
+    const width = m.original_info?.width ?? m.sizes?.large?.w
+    const height = m.original_info?.height ?? m.sizes?.large?.h
 
     if (type === 'photo') {
       if (photoUrl) photos.push({ type: 'photo', url: photoUrl, thumbnail_url: photoUrl })
     } else if (type === 'video') {
-      videos.push({ type: 'video', url: videoVariant?.url ?? photoUrl, thumbnail_url: photoUrl })
+      videos.push({ type: 'video', url: videoVariant?.url ?? photoUrl, thumbnail_url: photoUrl, width, height, duration_ms: m.video_info?.duration_millis, bitrate: videoVariant?.bitrate, variants })
     } else if (type === 'animated_gif') {
-      animated.push({ type: 'animated_gif', url: videoVariant?.url ?? photoUrl, thumbnail_url: photoUrl })
+      animated.push({ type: 'animated_gif', url: videoVariant?.url ?? photoUrl, thumbnail_url: photoUrl, width, height, duration_ms: m.video_info?.duration_millis, bitrate: videoVariant?.bitrate, variants })
     }
   }
 
@@ -117,22 +134,23 @@ function mapUser(user?: SyndicationUser): FxTweet['author'] {
   }
 }
 
-function mapSyndicationTweet(raw: SyndicationTweet, handle: string, id: string): FxTweet {
+function mapSyndicationTweet(raw: SyndicationTweet, handle?: string, id?: string): FxTweet {
   const screenName = raw.user?.screen_name ?? handle
-  const quoted = raw.quoted_status_result?.result?.legacy ?? raw.quoted_status_result?.result?.tweet
+  const ownId = raw.id_str ?? id
+  const quoted = raw.quoted_tweet ?? raw.quoted_status_result?.result?.legacy ?? raw.quoted_status_result?.result?.tweet
 
   return {
-    id: raw.id_str ?? id,
+    id: ownId,
     text: raw.text,
     created_at: raw.created_at,
-    url: `https://x.com/${screenName}/status/${raw.id_str ?? id}`,
+    url: screenName && ownId ? `https://x.com/${screenName}/status/${ownId}` : undefined,
     author: mapUser(raw.user),
     likes: raw.favorite_count,
     replies: raw.conversation_count,
     lang: raw.lang,
     media: mapMedia(raw),
     article: mapArticle(raw.article),
-    quote: quoted ? mapSyndicationTweet(quoted, screenName, quoted.id_str ?? '') : undefined,
+    quote: quoted ? mapSyndicationTweet(quoted) : undefined,
   }
 }
 

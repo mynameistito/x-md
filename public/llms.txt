@@ -1,0 +1,21 @@
+# x.md
+
+> x.md is an agent-friendly, read-only browser for public X content. It returns compact Markdown by default, full Markdown with `?full=true`, and structured JSON with `?format=json` or `Accept: application/json`.
+
+Canonical site: https://x.pcstyle.dev/
+Documentation: https://x.pcstyle.dev/docs
+Source: https://github.com/pc-style/x-md
+
+## Read routes
+
+- Post, video, thread, or conversation: `https://x.pcstyle.dev/{handle}/status/{id}`
+- Profile and latest original posts: `https://x.pcstyle.dev/{handle}`
+- Search public posts: `https://x.pcstyle.dev/search?q={query}`; optional `feed=latest|top|media`
+- Followers: `https://x.pcstyle.dev/{handle}/followers`
+- Following: `https://x.pcstyle.dev/{handle}/following`
+
+Browse routes accept `cursor`, `page`, `limit`, `full=true`, and `format=json`. Post routes also support thread, conversation context, reply ordering, and Obsidian output; see the documentation for exact query parameters.
+
+## Scope
+
+x.md only reads public content and does not post, follow, like, or authenticate as an X user. X Lists are not supported.

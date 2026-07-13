@@ -4,6 +4,7 @@ const FX_BASE = 'https://api.fxtwitter.com'
 const UA = 'x-md/1.0'
 
 export interface FxAuthor {
+  id?: string
   name?: string
   screen_name?: string
   url?: string
@@ -17,6 +18,7 @@ export interface FxAuthor {
   joined?: string
   avatar_url?: string
   banner_url?: string
+  protected?: boolean
   website?: { url?: string; display_url?: string }
   verification?: { verified?: boolean; type?: string }
 }
@@ -28,7 +30,21 @@ export interface FxMediaItem {
   width?: number
   height?: number
   duration?: number
+  /** Normalized duration. FxTwitter sends seconds; syndication sends milliseconds. */
+  duration_ms?: number
   format?: string
+  bitrate?: number
+  variants?: Array<{
+    url: string
+    content_type?: string
+    bitrate?: number
+  }>
+  formats?: Array<{
+    url: string
+    container?: string
+    codec?: string
+    bitrate?: number
+  }>
 }
 
 export interface FxMedia {
@@ -87,9 +103,12 @@ export interface FxTweet {
   possibly_sensitive?: boolean
   media?: FxMedia
   quote?: FxTweet
+  reposted_by?: FxAuthor | null
   article?: FxArticle
   poll?: unknown
   community_note?: unknown
+  /** How this post relates to the status requested by the caller. */
+  context?: 'parent' | 'post' | 'thread' | 'reply'
 }
 
 interface FxApiResponse {
@@ -100,11 +119,57 @@ interface FxApiResponse {
   thread?: FxTweet[]
 }
 
+interface FxConversationResponse {
+  results?: FxTweet[]
+  tweets?: FxTweet[]
+  conversation?: FxTweet[]
+  replies?: FxTweet[] | null
+}
+
+export interface FxCursor {
+  top?: string
+  bottom?: string
+}
+
+export interface FxListResponse<T> {
+  results: T[]
+  cursor?: FxCursor
+}
+
+function normalizeMediaItem(item: FxMediaItem): FxMediaItem {
+  const formatVariants = item.formats?.filter((format) => format.url).map((format) => ({
+    url: format.url,
+    content_type: format.container
+      ? `${format.container}${format.codec ? `; codecs=${format.codec}` : ''}`
+      : undefined,
+    bitrate: format.bitrate,
+  }))
+  return {
+    ...item,
+    duration_ms: item.duration_ms ?? (item.duration != null ? item.duration * 1000 : undefined),
+    variants: item.variants ?? formatVariants,
+  }
+}
+
+function normalizeMedia(media?: FxMedia): FxMedia | undefined {
+  if (!media || Object.keys(media).length === 0) return undefined
+  const map = (items?: FxMediaItem[]) => items?.map(normalizeMediaItem)
+  return {
+    ...media,
+    photos: map(media.photos),
+    videos: map(media.videos),
+    animated: map(media.animated),
+    all: map(media.all),
+    mosaic: media.mosaic ? { ...media.mosaic, photos: map(media.mosaic.photos) } : undefined,
+  }
+}
+
 function normalizeTweet(raw: FxTweet): FxTweet {
   return {
     ...raw,
     retweets: raw.retweets ?? raw.reposts,
-    media: raw.media && Object.keys(raw.media).length > 0 ? raw.media : undefined,
+    media: normalizeMedia(raw.media),
+    quote: raw.quote ? normalizeTweet(raw.quote) : undefined,
   }
 }
 
@@ -113,7 +178,7 @@ function pickTweet(data: FxApiResponse): FxTweet | undefined {
   return raw ? normalizeTweet(raw) : undefined
 }
 
-async function fxFetch(path: string): Promise<FxApiResponse> {
+async function fxFetchJson<T>(path: string): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${FX_BASE}/${path}`, {
@@ -141,7 +206,61 @@ async function fxFetch(path: string): Promise<FxApiResponse> {
     )
   }
 
-  return data
+  return data as T
+}
+
+async function fxFetch(path: string): Promise<FxApiResponse> {
+  return fxFetchJson<FxApiResponse>(path)
+}
+
+function encodeQuery(params: Record<string, string | number | undefined>): string {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') query.set(key, String(value))
+  }
+  return query.toString()
+}
+
+export async function fetchFxProfile(handle: string): Promise<FxAuthor> {
+  const data = await fxFetchJson<{ user?: FxAuthor }>(`2/profile/${encodeURIComponent(handle)}`)
+  if (!data.user) throw new ConvertError(404, 'Profile not found.', 'not_found')
+  return data.user
+}
+
+export async function fetchFxProfileStatuses(
+  handle: string,
+  cursor?: string,
+  count = 20,
+): Promise<FxListResponse<FxTweet>> {
+  const query = encodeQuery({ cursor, count, with_replies: 'false' })
+  const data = await fxFetchJson<Partial<FxListResponse<FxTweet>>>(
+    `2/profile/${encodeURIComponent(handle)}/statuses?${query}`,
+  )
+  return { results: (data.results ?? []).map(normalizeTweet), cursor: data.cursor }
+}
+
+export async function searchFxStatuses(
+  queryText: string,
+  feed: string,
+  cursor?: string,
+  count = 20,
+): Promise<FxListResponse<FxTweet>> {
+  const query = encodeQuery({ q: queryText, feed, cursor, count })
+  const data = await fxFetchJson<Partial<FxListResponse<FxTweet>>>(`2/search?${query}`)
+  return { results: (data.results ?? []).map(normalizeTweet), cursor: data.cursor }
+}
+
+export async function fetchFxConnections(
+  handle: string,
+  relation: 'followers' | 'following',
+  cursor?: string,
+  count = 20,
+): Promise<FxListResponse<FxAuthor>> {
+  const query = encodeQuery({ cursor, count })
+  const data = await fxFetchJson<Partial<FxListResponse<FxAuthor>>>(
+    `2/profile/${encodeURIComponent(handle)}/${relation}?${query}`,
+  )
+  return { results: data.results ?? [], cursor: data.cursor }
 }
 
 export async function fetchFxStatus(id: string): Promise<FxTweet> {
@@ -169,7 +288,6 @@ export function getParentStatusId(tweet: FxTweet): string | undefined {
 /** Walk parent replies from root through the given status id (inclusive). */
 export async function fetchFxConversationChain(
   id: string,
-  limit = 100,
 ): Promise<FxTweet[]> {
   const walked: FxTweet[] = []
   const seen = new Set<string>()
@@ -190,7 +308,7 @@ export async function fetchFxConversationChain(
   }
 
   walked.reverse()
-  return walked.slice(0, limit)
+  return walked
 }
 
 export async function fetchFxThread(id: string): Promise<FxTweet[]> {
@@ -201,14 +319,41 @@ export async function fetchFxThread(id: string): Promise<FxTweet[]> {
   return [await fetchFxStatus(id)]
 }
 
+export type FxReplyRanking = 'likes' | 'recency'
+
+/** Fetch ranked replies from FxTwitter's v2 conversation endpoint. */
+export async function fetchFxConversationReplies(
+  id: string,
+  rankingMode: FxReplyRanking = 'likes',
+  limit = 10,
+): Promise<FxTweet[]> {
+  const query = encodeQuery({ ranking_mode: rankingMode })
+  const data = await fxFetchJson<FxConversationResponse>(
+    `2/conversation/${encodeURIComponent(id)}?${query}`,
+  )
+  const results = (data.replies ?? data.results ?? data.tweets ?? data.conversation ?? [])
+    .map(normalizeTweet)
+    .filter((tweet) => getParentStatusId(tweet) === id)
+  const timestamp = (tweet: FxTweet) => tweet.created_timestamp != null
+    ? tweet.created_timestamp
+    : Date.parse(tweet.created_at ?? '') || 0
+  results.sort((a, b) => {
+    const primary = rankingMode === 'likes'
+      ? (b.likes ?? 0) - (a.likes ?? 0)
+      : timestamp(b) - timestamp(a)
+    return primary || timestamp(b) - timestamp(a) || String(a.id ?? '').localeCompare(String(b.id ?? ''))
+  })
+  return results.slice(0, limit)
+}
+
 /**
  * Full thread: FxTwitter thread endpoint (author threads + reply chains), with a
  * parent-walk fallback when the endpoint returns only the requested status.
  */
-export async function fetchFxFullThread(id: string, limit = 100): Promise<FxTweet[]> {
+export async function fetchFxFullThread(id: string): Promise<FxTweet[]> {
   const fromThread = await fetchFxThread(id)
   if (fromThread.length > 1) {
-    return fromThread.length > limit ? fromThread.slice(0, limit) : fromThread
+    return fromThread
   }
 
   const tweet = fromThread[0] ?? (await fetchFxStatus(id))
@@ -216,7 +361,6 @@ export async function fetchFxFullThread(id: string, limit = 100): Promise<FxTwee
     return [tweet]
   }
 
-  const chain = await fetchFxConversationChain(id, limit)
+  const chain = await fetchFxConversationChain(id)
   return chain.length > 0 ? chain : [tweet]
 }
-

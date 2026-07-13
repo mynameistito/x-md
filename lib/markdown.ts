@@ -7,6 +7,7 @@ export interface RenderOptions {
   format: OutputFormat
   userinfo: UserinfoLevel
   canonicalUrl: string
+  compact?: boolean
 }
 
 function mediaItems(media?: FxMedia): FxMediaItem[] {
@@ -26,7 +27,18 @@ function renderMedia(media?: FxMedia): string[] {
     if (type === 'photo' || type === 'image') {
       lines.push(`> ![image](${url})`)
     } else if (type === 'video') {
-      lines.push(`> [video](${thumb ?? url})`)
+      if (url) lines.push(`> [video](${url})`)
+      if (thumb && thumb !== url) lines.push(`> ![video thumbnail](${thumb})`)
+      const details = [
+        item.duration_ms != null ? `duration: ${item.duration_ms}ms` : undefined,
+        item.width != null && item.height != null ? `${item.width}×${item.height}` : undefined,
+        item.bitrate != null ? `${item.bitrate}bps` : undefined,
+      ].filter((part): part is string => Boolean(part))
+      if (details.length) lines.push(`> Video: ${details.join(' · ')}`)
+      const variants = item.variants?.filter((variant) => variant.url)
+      if (variants?.length) {
+        lines.push(`> Variants: ${variants.map((variant) => `[${variant.bitrate ? `${variant.bitrate}bps` : variant.content_type ?? 'MP4'}](${variant.url})`).join(' · ')}`)
+      }
     } else if (type === 'gif' || type === 'animated_gif') {
       lines.push(`> [animated_gif](${thumb ?? url})`)
     } else if (url) {
@@ -93,12 +105,12 @@ function statsLine(tweet: FxTweet): string | undefined {
   return parts.length ? parts.join(' · ') : undefined
 }
 
-function tweetUrl(tweet: FxTweet, fallback: string): string {
+function tweetUrl(tweet: FxTweet, fallback?: string): string {
   if (tweet.url) return tweet.url
   const handle = tweet.author?.screen_name
   const id = tweet.id
   if (handle && id) return `https://x.com/${handle}/status/${id}`
-  return fallback
+  return fallback ?? 'Unavailable (post identity missing)'
 }
 
 function renderQuote(quote: FxTweet): string[] {
@@ -114,6 +126,10 @@ function renderQuote(quote: FxTweet): string[] {
   for (const mediaLine of renderMedia(quote.media)) {
     lines.push(`> ${mediaLine.replace(/^> /, '')}`)
   }
+  if (quote.quote) {
+    for (const nestedLine of renderQuote(quote.quote)) lines.push(`> ${nestedLine}`)
+  }
+  lines.push(`> Source: ${tweetUrl(quote)}`)
   lines.push('>')
   return lines
 }
@@ -128,9 +144,15 @@ function renderSingleTweet(
   const lines: string[] = []
   const author = tweet.author?.name ?? 'Unknown'
   const handle = tweet.author?.screen_name
-  const source = tweetUrl(tweet, opts.canonicalUrl)
+  const source = tweetUrl(
+    tweet,
+    tweet.context === 'post' || total === 1 ? opts.canonicalUrl : undefined,
+  )
+  const relation = tweet.context
+    ? ({ parent: 'Parent', post: 'Post', thread: 'Thread', reply: 'Reply' } as const)[tweet.context]
+    : undefined
   const heading =
-    total > 1 ? `## ${index + 1}/${total} — ${author}${handle ? ` (@${handle})` : ''}` : null
+    total > 1 ? `## ${relation ? `${relation} · ` : ''}${index + 1}/${total} — ${author}${handle ? ` (@${handle})` : ''}` : null
 
   if (opts.format === 'obsidian') {
     if (index === 0) {
@@ -150,7 +172,7 @@ function renderSingleTweet(
       lines.push(heading)
       lines.push('')
     }
-  } else {
+  } else if (!opts.compact) {
     if (heading) {
       lines.push(heading)
       lines.push('')
@@ -164,6 +186,12 @@ function renderSingleTweet(
     const stats = statsLine(tweet)
     if (stats) lines.push(`Stats: ${stats}`)
     lines.push('')
+  } else {
+    if (heading) {
+      lines.push(heading, '')
+    } else {
+      lines.push(`**${relation ? `${relation} · ` : ''}${author}${handle ? ` (@${handle})` : ''}**`, '')
+    }
   }
 
   if (includeAuthorMeta && tweet.author) {
@@ -185,6 +213,8 @@ function renderSingleTweet(
     lines.push(...renderQuote(tweet.quote))
     lines.push('')
   }
+
+  if (opts.compact && opts.format !== 'obsidian') lines.push(`Source: ${source}`)
 
   return lines
 }

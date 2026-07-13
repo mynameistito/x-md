@@ -1,9 +1,9 @@
 import { buildCacheKey, cacheControlHeader, type CacheStatus, withCache } from './cache.js'
 import { ConvertError } from './errors.js'
-import { fetchPosts, type FetchSource } from './tweet-fetch.js'
+import { fetchPosts, type ContextMode, type FetchSource, type RepliesMode } from './tweet-fetch.js'
 import { renderThreadMarkdown, type UserinfoLevel } from './markdown.js'
 
-export type OutputFormat = 'markdown' | 'obsidian'
+export type OutputFormat = 'markdown' | 'obsidian' | 'json'
 
 export { ConvertError }
 
@@ -15,6 +15,9 @@ export interface ConvertInput {
   thread?: string | null
   userinfo?: string | null
   nocache?: boolean | string | null
+  full?: boolean | string | null
+  context?: string | null
+  replies?: string | null
 }
 
 export interface ConvertSuccess {
@@ -25,7 +28,11 @@ export interface ConvertSuccess {
   postCount: number
   source: FetchSource
   cache: CacheStatus
+  posts: FxTweet[]
+  compact: boolean
 }
+
+import type { FxTweet } from './fxtwitter.js'
 
 const ALLOWED_HOSTS = new Set([
   'x.com',
@@ -101,7 +108,8 @@ export function resolveTarget(input: ConvertInput): { canonicalUrl: string; hand
 function parseFormat(raw: string | null | undefined): OutputFormat {
   if (!raw || raw === 'markdown') return 'markdown'
   if (raw === 'obsidian') return 'obsidian'
-  throw new ConvertError(400, '`format` must be `markdown` or `obsidian`.', 'invalid_format')
+  if (raw === 'json') return 'json'
+  throw new ConvertError(400, '`format` must be `markdown`, `obsidian`, or `json`.', 'invalid_format')
 }
 
 const DEFAULT_THREAD = 'full'
@@ -142,6 +150,48 @@ function parseNocache(raw: string | boolean | null | undefined): boolean {
   return raw === '1' || raw === 'true' || raw === 'yes'
 }
 
+function parseBoolean(raw: string | boolean | null | undefined): boolean {
+  if (raw === true) return true
+  if (raw === false || raw == null) return false
+  return raw === '1' || raw === 'true' || raw === 'yes'
+}
+
+function parseContext(raw: string | null | undefined): ContextMode {
+  if (!raw || raw === 'full') return 'full'
+  if (raw === 'thread') return 'thread'
+  throw new ConvertError(400, '`context` must be `full` or `thread`.', 'invalid_context')
+}
+
+function parseReplies(raw: string | null | undefined): RepliesMode {
+  if (!raw || raw === 'top') return 'top'
+  if (raw === 'recent' || raw === 'off') return raw
+  throw new ConvertError(400, '`replies` must be `top`, `recent`, or `off`.', 'invalid_replies')
+}
+
+function withSourceUrls(tweet: FxTweet, fallback?: string): FxTweet {
+  const handle = tweet.author?.screen_name
+  const url = tweet.url ?? (handle && tweet.id ? `https://x.com/${handle}/status/${tweet.id}` : fallback)
+  return { ...tweet, url, quote: tweet.quote ? withSourceUrls(tweet.quote) : undefined }
+}
+
+function limitPostsByRole(posts: FxTweet[], requestedId: string, limit: number): FxTweet[] {
+  if (posts.length <= limit) return posts
+  const focalIndex = posts.findIndex((post) => post.id === requestedId)
+  const candidates = posts.map((post, index) => ({ post, index, priority:
+    post.id === requestedId ? 0 : post.context === 'parent' || post.context === 'thread' ? 1 : 2,
+  }))
+  candidates.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority
+    // Closest parent first; continuations and ranked replies retain provider order.
+    if (a.post.context === 'parent' && b.post.context === 'parent') {
+      return Math.abs(focalIndex - a.index) - Math.abs(focalIndex - b.index)
+    }
+    return a.index - b.index
+  })
+  const selected = new Set(candidates.slice(0, limit).map(({ index }) => index))
+  return posts.filter((_post, index) => selected.has(index))
+}
+
 type ConvertPayload = Omit<ConvertSuccess, 'cache'>
 
 async function convertTweetUncached(
@@ -151,16 +201,22 @@ async function convertTweetUncached(
   canonicalUrl: string,
   handle: string,
   id: string,
+  compact: boolean,
+  context: ContextMode,
+  replies: RepliesMode,
 ): Promise<ConvertPayload> {
   const warnings: string[] = []
 
-  const { tweets, source } = await fetchPosts(handle, id, thread.mode)
+  const { tweets, source } = await fetchPosts(handle, id, thread.mode, context, replies)
 
   let posts = tweets
   if (thread.mode === 'full' && posts.length > thread.limit) {
-    posts = posts.slice(0, thread.limit)
+    posts = limitPostsByRole(posts, id, thread.limit)
     warnings.push(`Thread truncated to ${thread.limit} posts.`)
   }
+  posts = posts.map((post) =>
+    withSourceUrls(post, post.id === id || posts.length === 1 ? canonicalUrl : undefined),
+  )
 
   if (source !== 'fxtwitter') {
     warnings.push(
@@ -169,9 +225,10 @@ async function convertTweetUncached(
   }
 
   const body = renderThreadMarkdown(posts, {
-    format,
+    format: format === 'json' ? 'markdown' : format,
     userinfo,
     canonicalUrl,
+    compact: compact && format !== 'obsidian',
   })
 
   return {
@@ -181,6 +238,8 @@ async function convertTweetUncached(
     format,
     postCount: posts.length,
     source,
+    posts,
+    compact: compact && format !== 'obsidian',
   }
 }
 
@@ -189,18 +248,25 @@ export async function convertTweet(input: ConvertInput): Promise<ConvertSuccess>
   const thread = parseThread(input.thread)
   const userinfo = parseUserinfo(input.userinfo)
   const nocache = parseNocache(input.nocache)
+  const compact = !parseBoolean(input.full)
+  const context = parseContext(input.context)
+  const replies = parseReplies(input.replies)
   const { canonicalUrl, handle, id } = resolveTarget(input)
 
   const cacheKey = buildCacheKey({
-    v: 2,
+    v: 5,
     id,
+    handle: handle.toLowerCase(),
     format,
     thread: canonicalThreadCacheValue(input.thread),
     userinfo: input.userinfo ?? 'off',
+    compact: compact ? '1' : '0',
+    context,
+    replies,
   })
 
   const { value, status } = await withCache(cacheKey, nocache, async () =>
-    convertTweetUncached(format, thread, userinfo, canonicalUrl, handle, id),
+    convertTweetUncached(format, thread, userinfo, canonicalUrl, handle, id, compact, context, replies),
   )
 
   return { ...value, cache: status }
@@ -260,6 +326,8 @@ export function markdownResponse(result: ConvertSuccess, asJson = false, asHtml 
         format: result.format,
         url: result.canonicalUrl,
         markdown: result.body,
+        posts: result.posts,
+        compact: result.compact,
         warnings: result.warnings,
         postCount: result.postCount,
         source: result.source,

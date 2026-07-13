@@ -26,9 +26,49 @@ vi.mock('./markdown.js', () => ({
 }))
 
 // Import after mocks are declared.
-import { convertTweet } from './converter.js'
+import { convertTweet, markdownResponse } from './converter.js'
 import { ConvertError } from './errors.js'
 import { buildCacheKey } from './cache.js'
+import { renderThreadMarkdown } from './markdown.js'
+import { fetchPosts } from './tweet-fetch.js'
+
+describe('output selection', () => {
+  const validUrl = 'https://x.com/testuser/status/1234567890'
+
+  test('defaults to compact and full=true restores rich rendering', async () => {
+    await convertTweet({ url: validUrl })
+    expect(vi.mocked(renderThreadMarkdown)).toHaveBeenLastCalledWith(expect.any(Array), expect.objectContaining({ compact: true }))
+    await convertTweet({ url: validUrl, full: 'true' })
+    expect(vi.mocked(renderThreadMarkdown)).toHaveBeenLastCalledWith(expect.any(Array), expect.objectContaining({ compact: false }))
+  })
+
+  test('format=json is accepted and JSON contains structured posts and metadata', async () => {
+    const result = await convertTweet({ url: validUrl, format: 'json' })
+    const response = markdownResponse(result, true)
+    const payload = JSON.parse(response.body) as { posts: Array<{ id?: string; url?: string }>; source: string; markdown: string }
+    expect(response.headers['Content-Type']).toContain('application/json')
+    expect(payload.posts[0]).toMatchObject({ id: '1' })
+    expect(payload.posts[0]?.url).toBe(validUrl)
+    expect(payload.source).toBe('fxtwitter')
+    expect(payload.markdown).toBe('# hello')
+  })
+
+  test('retains relation annotations and synthesizes reply source URLs', async () => {
+    vi.mocked(fetchPosts).mockResolvedValueOnce({
+      tweets: [{ id: '99', text: 'reply', context: 'reply', author: { screen_name: 'bob' } }],
+      source: 'fxtwitter',
+    })
+    const result = await convertTweet({ url: validUrl, format: 'json' })
+    expect(result.posts[0]).toMatchObject({
+      id: '99', context: 'reply', url: 'https://x.com/bob/status/99',
+    })
+  })
+
+  test('validates context and replies query values', async () => {
+    await expect(convertTweet({ url: validUrl, context: 'bad' })).rejects.toMatchObject({ code: 'invalid_context' })
+    await expect(convertTweet({ url: validUrl, replies: 'bad' })).rejects.toMatchObject({ code: 'invalid_replies' })
+  })
+})
 
 // ---------------------------------------------------------------------------
 // parseThread — error cases (throws before any fetch, no network needed)
@@ -201,11 +241,22 @@ describe('canonicalThreadCacheValue — cache key normalisation', () => {
     )
   })
 
-  test('cache key uses version 2', async () => {
+  test('cache key uses version 5, normalized handle, and includes post-context defaults', async () => {
     await convertTweet({ url: validUrl, thread: 'full' })
     expect(mockedBuildCacheKey).toHaveBeenCalledWith(
-      expect.objectContaining({ v: 2 }),
+      expect.objectContaining({ v: 5, handle: 'testuser', context: 'full', replies: 'top' }),
     )
+  })
+
+  test('numeric limits preserve focal post and choose context by role before display ordering', async () => {
+    vi.mocked(fetchPosts).mockResolvedValueOnce({ tweets: [
+      { id: '1', context: 'parent' }, { id: '2', context: 'parent' },
+      { id: '3', context: 'post' }, { id: '4', context: 'thread' },
+      { id: '5', context: 'reply' },
+    ], source: 'fxtwitter' })
+    const result = await convertTweet({ url: 'https://x.com/TestUser/status/3', thread: '2', format: 'json' })
+    expect(result.posts.map((post) => post.id)).toEqual(['2', '3'])
+    expect(vi.mocked(buildCacheKey)).toHaveBeenLastCalledWith(expect.objectContaining({ handle: 'testuser' }))
   })
 
   // Regression: null and 'full' and 'conversation' all map to the same cache key

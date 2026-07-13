@@ -12,8 +12,28 @@
       "destination": "/docs.html"
     },
     {
-      "source": "/:handle/status/:id",
+      "source": "/:handle([A-Za-z0-9_]{1,15})/status/:id(\\d+)",
       "destination": "/api/convert?handle=:handle&id=:id"
+    },
+    {
+      "source": "/search",
+      "destination": "/api/browse?resource=search"
+    },
+    {
+      "source": "/:handle([A-Za-z0-9_]{1,15})/followers",
+      "destination": "/api/browse?resource=followers&handle=:handle"
+    },
+    {
+      "source": "/:handle([A-Za-z0-9_]{1,15})/following",
+      "destination": "/api/browse?resource=following&handle=:handle"
+    },
+    {
+      "source": "/api",
+      "destination": "/404"
+    },
+    {
+      "source": "/:handle([A-Za-z0-9_]{1,15})",
+      "destination": "/api/browse?resource=profile&handle=:handle"
     }
   ],
   "redirects": [

@@ -3,6 +3,7 @@ import {
   getParentStatusId,
   fetchFxConversationChain,
   fetchFxFullThread,
+  fetchFxConversationReplies,
   type FxTweet,
   type FxReplyingTo,
 } from './fxtwitter.js'
@@ -148,7 +149,7 @@ describe('fetchFxConversationChain', () => {
     expect(result.map((t) => t.id)).toEqual(['100', '200', '300'])
   })
 
-  test('respects the limit parameter by slicing the root-first chain', async () => {
+  test('keeps the focal post in a long parent chain', async () => {
     const chain: Record<string, FxTweet> = {
       '100': makeTweet('100'),
       '200': makeTweet('200', { replying_to: { status: '100' } as FxReplyingTo }),
@@ -168,10 +169,8 @@ describe('fetchFxConversationChain', () => {
       }),
     )
 
-    const result = await fetchFxConversationChain('500', 3)
-    expect(result).toHaveLength(3)
-    // Root-first chain [100,200,300,400,500], slice(0,3) = [100,200,300]
-    expect(result.map((t) => t.id)).toEqual(['100', '200', '300'])
+    const result = await fetchFxConversationChain('500')
+    expect(result.map((t) => t.id)).toEqual(['100', '200', '300', '400', '500'])
   })
 
   test('stops walking when a cycle is detected', async () => {
@@ -259,7 +258,7 @@ describe('fetchFxFullThread', () => {
     expect(result.map((t) => t.id)).toEqual(['100', '200', '300'])
   })
 
-  test('slices multi-tweet thread to the given limit', async () => {
+  test('does not truncate before the converter can preserve the focal post', async () => {
     const tweets = [makeTweet('1'), makeTweet('2'), makeTweet('3'), makeTweet('4'), makeTweet('5')]
     vi.stubGlobal(
       'fetch',
@@ -268,9 +267,8 @@ describe('fetchFxFullThread', () => {
       ),
     )
 
-    const result = await fetchFxFullThread('5', 3)
-    expect(result).toHaveLength(3)
-    expect(result.map((t) => t.id)).toEqual(['1', '2', '3'])
+    const result = await fetchFxFullThread('5')
+    expect(result.map((t) => t.id)).toEqual(['1', '2', '3', '4', '5'])
   })
 
   test('returns single tweet directly when it has no parent', async () => {
@@ -331,7 +329,7 @@ describe('fetchFxFullThread', () => {
       ),
     )
 
-    const result = await fetchFxFullThread('3', 3)
+    const result = await fetchFxFullThread('3')
     expect(result).toHaveLength(3)
   })
 
@@ -344,7 +342,7 @@ describe('fetchFxFullThread', () => {
       ),
     )
 
-    const result = await fetchFxFullThread('B', 5)
+    const result = await fetchFxFullThread('B')
     expect(result).toHaveLength(2)
   })
 
@@ -369,5 +367,45 @@ describe('fetchFxFullThread', () => {
     const result = await fetchFxFullThread('300')
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe('300')
+  })
+})
+
+describe('fetchFxConversationReplies', () => {
+  test('keeps only direct replies, sorts by recency, caps, and sends ranking_mode', async () => {
+    const replies = Array.from({ length: 12 }, (_, index) => makeTweet(String(index + 1), {
+      likes: index,
+      created_timestamp: index,
+      replying_to: index === 0
+        ? { status: 'other' }
+        : index === 1
+          ? undefined
+          : { status: '20' },
+    }))
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ code: 200, replies }), { status: 200 }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await fetchFxConversationReplies('20', 'recency', 10)
+
+    expect(result.map((tweet) => tweet.id)).toEqual(['12', '11', '10', '9', '8', '7', '6', '5', '4', '3'])
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/2/conversation/20?ranking_mode=recency')
+  })
+
+  test('normalizes real FxTwitter formats, seconds, and nested quotes recursively', async () => {
+    const tweet = makeTweet('20', { media: { videos: [{
+      type: 'video', duration: 4.5, formats: [
+        { url: 'https://video/high.mp4', container: 'video/mp4', codec: 'avc1', bitrate: 832000 },
+      ],
+    }] }, quote: { id: '30', quote: { id: '40', media: { videos: [{ type: 'video', duration: 2 }] } } } })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(fxStatusResponse(tweet)), { status: 200 }),
+    ))
+    const result = await fetchFxConversationChain('20')
+    expect(result[0].media?.videos?.[0]).toMatchObject({
+      duration_ms: 4500,
+      variants: [{ url: 'https://video/high.mp4', content_type: 'video/mp4; codecs=avc1', bitrate: 832000 }],
+    })
+    expect(result[0].quote?.quote?.media?.videos?.[0]?.duration_ms).toBe(2000)
   })
 })
