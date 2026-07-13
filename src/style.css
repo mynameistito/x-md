@@ -81,6 +81,10 @@ html[data-theme="dark"] {
     color: #ffffff;
   }
 
+  html[data-theme="dark"] ::selection {
+    color: #0d1b13;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     html {
       scroll-behavior: auto;
