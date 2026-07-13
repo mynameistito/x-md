@@ -10,5 +10,6 @@ export function setCorsHeaders(res: HeaderWriter, methods = 'GET, HEAD, OPTIONS'
 }
 
 export function wantsJson(format: string | null | undefined, accept: string): boolean {
-  return format === 'json' || accept.includes('application/json')
+  if (format) return format === 'json'
+  return accept.includes('application/json')
 }

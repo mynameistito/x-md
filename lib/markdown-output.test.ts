@@ -46,6 +46,14 @@ describe('markdown output', () => {
     expect(full).toContain('## Post · 1/2')
   })
 
+  test('retains the post relation in single-post full and Obsidian output', () => {
+    const single = [{ ...posts[0], context: 'post' as const }]
+    const full = renderThreadMarkdown(single, { format: 'markdown', userinfo: 'off', canonicalUrl: 'https://x.com/root/status/1', compact: false })
+    const obsidian = renderThreadMarkdown(single, { format: 'obsidian', userinfo: 'off', canonicalUrl: 'https://x.com/root/status/1' })
+    expect(full).toContain('## Post · 1/1')
+    expect(obsidian).toContain('## Post · 1/1')
+  })
+
   test('does not attribute an unidentified reply to the requested post URL', () => {
     const output = renderThreadMarkdown([
       { ...posts[0], context: 'post' },

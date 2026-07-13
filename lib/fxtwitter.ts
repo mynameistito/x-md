@@ -139,9 +139,15 @@ export interface FxListResponse<T> {
 function normalizeMediaItem(item: FxMediaItem): FxMediaItem {
   const formatVariants = item.formats?.filter((format) => format.url).map((format) => ({
     url: format.url,
-    content_type: format.container
-      ? `${format.container}${format.codec ? `; codecs=${format.codec}` : ''}`
-      : undefined,
+    content_type: format.container?.includes('/')
+      ? format.container
+      : format.container === 'mp4'
+      ? 'video/mp4'
+      : format.container === 'webm'
+        ? 'video/webm'
+        : format.container === 'm3u8'
+          ? 'application/vnd.apple.mpegurl'
+          : undefined,
     bitrate: format.bitrate,
   }))
   return {

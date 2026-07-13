@@ -181,7 +181,7 @@ export async function browse(input: BrowseInput): Promise<BrowseResult> {
   }
   const page = Math.min(positiveInt(input.page, 1), MAX_PAGE)
   const limit = Math.min(positiveInt(input.limit, DEFAULT_LIMIT), MAX_LIMIT)
-  const key = buildCacheKey({ v: 1, resource, handle: input.handle ?? '', q: input.q ?? '', feed: input.feed ?? '', cursor: input.cursor ?? '', page, limit, full: truthy(input.full) ? 1 : 0 })
+  const key = buildCacheKey({ v: 2, resource, handle: input.handle ?? '', q: input.q ?? '', feed: input.feed ?? '', cursor: input.cursor ?? '', page, limit, full: truthy(input.full) ? 1 : 0, format: input.format ?? 'markdown' })
   const cached = await withCache(key, truthy(input.nocache), () => browseUncached(input, resource, page, limit))
   return { ...cached.value, cache: cached.status }
 }
@@ -189,6 +189,7 @@ export async function browse(input: BrowseInput): Promise<BrowseResult> {
 export function browseResponse(result: BrowseResult, asJson: boolean): { status: number; headers: Record<string, string>; body: string } {
   const headers: Record<string, string> = {
     'Content-Type': asJson ? 'application/json; charset=utf-8' : 'text/markdown; charset=utf-8',
+    'X-Source': 'fxtwitter',
     'X-Cache': result.cache.toUpperCase(),
     'X-Browse-Resource': result.resource,
     'X-Result-Count': String(result.posts?.length ?? result.users?.length ?? 0),

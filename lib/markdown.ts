@@ -152,7 +152,9 @@ function renderSingleTweet(
     ? ({ parent: 'Parent', post: 'Post', thread: 'Thread', reply: 'Reply' } as const)[tweet.context]
     : undefined
   const heading =
-    total > 1 ? `## ${relation ? `${relation} · ` : ''}${index + 1}/${total} — ${author}${handle ? ` (@${handle})` : ''}` : null
+    total > 1 || relation
+      ? `## ${relation ? `${relation} · ` : ''}${index + 1}/${total} — ${author}${handle ? ` (@${handle})` : ''}`
+      : null
 
   if (opts.format === 'obsidian') {
     if (index === 0) {

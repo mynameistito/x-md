@@ -14,7 +14,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const accept = String(req.headers.accept ?? '')
   const requestedFormat = param('format')
   const asJson = wantsJson(requestedFormat, accept)
-  const asHtml = !asJson && acceptPrefersHtml(accept)
+  const asHtml = !requestedFormat && !asJson && acceptPrefersHtml(accept)
 
   try {
     const result = await convertTweet({

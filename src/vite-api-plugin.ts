@@ -50,8 +50,9 @@ async function handleConvert(
   if (guardMethod(req, res)) return true
 
   const accept = String(req.headers.accept ?? '')
-  const asJson = wantsJson(url.searchParams.get('format'), accept)
-  const asHtml = !asJson && acceptPrefersHtml(accept)
+  const requestedFormat = url.searchParams.get('format')
+  const asJson = wantsJson(requestedFormat, accept)
+  const asHtml = !requestedFormat && !asJson && acceptPrefersHtml(accept)
 
   try {
     const result = await convertTweet({

@@ -14,6 +14,7 @@ vi.mock('./fxtwitter.js', () => ({
 }))
 
 import { browse, browseResponse, isOriginalPost } from './browse.js'
+import { buildCacheKey } from './cache.js'
 import { ConvertError } from './errors.js'
 import { fetchFxConnections, fetchFxProfile, fetchFxProfileStatuses, searchFxStatuses } from './fxtwitter.js'
 
@@ -70,6 +71,7 @@ describe('browse', () => {
     const result = await browse({ resource: 'search', q: 'x-md', full: true, nocache: true })
     const response = browseResponse(result, true)
     expect(response.headers['Content-Type']).toContain('application/json')
+    expect(response.headers['X-Source']).toBe('fxtwitter')
     expect(response.headers['X-Result-Count']).toBe('1')
     expect(JSON.parse(response.body)).toMatchObject({ resource: 'search', query: 'x-md' })
     expect(result.markdown).toContain('0 likes')
@@ -78,6 +80,14 @@ describe('browse', () => {
   test('rejects Obsidian output on browse resources', async () => {
     await expect(browse({ resource: 'profile', handle: 'ada', format: 'obsidian' }))
       .rejects.toBeInstanceOf(ConvertError)
+  })
+
+  test('includes output format in the cache identity', async () => {
+    vi.mocked(searchFxStatuses).mockResolvedValue({ results: [post] })
+    await browse({ resource: 'search', q: 'x-md', format: 'json' })
+    expect(vi.mocked(buildCacheKey)).toHaveBeenCalledWith(
+      expect.objectContaining({ format: 'json', v: 2 }),
+    )
   })
 })
 

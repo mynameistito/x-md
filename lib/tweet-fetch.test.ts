@@ -150,4 +150,15 @@ describe('fetchPosts provider fallbacks', () => {
     const noReplies = await fetchPosts('alice', '2', 'full', 'full', 'off')
     expect(noReplies.tweets.map((tweet) => tweet.id)).toEqual(['1', '2', '3'])
   })
+
+  test('uses the requested handle when focal author metadata is missing', async () => {
+    vi.mocked(fetchFxFullThread).mockResolvedValue([
+      { id: '1', author: { screen_name: 'other' } },
+      { id: '2' },
+      { id: '3', author: { screen_name: 'Alice' } },
+    ])
+
+    const result = await fetchPosts('alice', '2', 'full', 'thread', 'top')
+    expect(result.tweets.map((tweet) => tweet.id)).toEqual(['2', '3'])
+  })
 })

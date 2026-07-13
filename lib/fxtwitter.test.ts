@@ -404,7 +404,7 @@ describe('fetchFxConversationReplies', () => {
     const result = await fetchFxConversationChain('20')
     expect(result[0].media?.videos?.[0]).toMatchObject({
       duration_ms: 4500,
-      variants: [{ url: 'https://video/high.mp4', content_type: 'video/mp4; codecs=avc1', bitrate: 832000 }],
+      variants: [{ url: 'https://video/high.mp4', content_type: 'video/mp4', bitrate: 832000 }],
     })
     expect(result[0].quote?.quote?.media?.videos?.[0]?.duration_ms).toBe(2000)
   })

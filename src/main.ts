@@ -80,13 +80,19 @@ function setupAccordion(root: HTMLElement) {
   const items = Array.from(root.querySelectorAll<HTMLElement>('.acc-item'))
   if (!items.length) return
   const open = (item: HTMLElement) => {
-    items.forEach((i) => delete i.dataset.open)
+    items.forEach((i) => {
+      delete i.dataset.open
+      i.querySelector<HTMLButtonElement>('.acc-trigger')?.setAttribute('aria-expanded', 'false')
+    })
     item.dataset.open = ''
+    item.querySelector<HTMLButtonElement>('.acc-trigger')?.setAttribute('aria-expanded', 'true')
   }
   items.forEach((item) => {
+    const trigger = item.querySelector<HTMLButtonElement>('.acc-trigger')
+    if (!trigger) return
     item.addEventListener('mouseenter', () => open(item))
-    item.addEventListener('focusin', () => open(item))
-    item.addEventListener('click', () => open(item))
+    trigger.addEventListener('focus', () => open(item))
+    trigger.addEventListener('click', () => open(item))
   })
 }
 
@@ -398,20 +404,24 @@ app.innerHTML = `
           Three ways to point an agent at it.
         </h2>
         <div class="acc mt-14">
-          <div class="acc-item" data-open tabindex="0">
-            <p class="acc-num">for any agent</p>
-            <h3 class="mt-3 text-[20px] font-bold text-ink">Say it in the prompt</h3>
-            <div class="acc-body">
+          <div class="acc-item" data-open>
+            <button type="button" class="acc-trigger" aria-expanded="true" aria-controls="agent-panel-prompt">
+              <span class="acc-num block">for any agent</span>
+              <span class="mt-3 block text-[20px] font-bold text-ink">Say it in the prompt</span>
+            </button>
+            <div id="agent-panel-prompt" class="acc-body">
               <p class="max-w-[44ch] text-[14.5px] leading-relaxed text-ink-2">
                 One line is enough: <span class="font-medium text-ink">"To read an X post, swap
                 x.com for x.pcstyle.dev."</span> Every agent that can fetch a URL now reads tweets.
               </p>
             </div>
           </div>
-          <div class="acc-item" tabindex="0">
-            <p class="acc-num">for skills-aware agents</p>
-            <h3 class="mt-3 text-[20px] font-bold text-ink">Install the skill</h3>
-            <div class="acc-body">
+          <div class="acc-item">
+            <button type="button" class="acc-trigger" aria-expanded="false" aria-controls="agent-panel-skill">
+              <span class="acc-num block">for skills-aware agents</span>
+              <span class="mt-3 block text-[20px] font-bold text-ink">Install the skill</span>
+            </button>
+            <div id="agent-panel-skill" class="acc-body">
               <p class="max-w-[44ch] text-[14.5px] leading-relaxed text-ink-2">
                 One command teaches Amp, Claude Code, and friends the host swap permanently.
               </p>
@@ -421,13 +431,15 @@ app.innerHTML = `
               </div>
             </div>
           </div>
-          <div class="acc-item" tabindex="0">
-            <p class="acc-num">for scripts</p>
-            <h3 class="mt-3 text-[20px] font-bold text-ink">Call the API</h3>
-            <div class="acc-body">
+          <div class="acc-item">
+            <button type="button" class="acc-trigger" aria-expanded="false" aria-controls="agent-panel-api">
+              <span class="acc-num block">for scripts</span>
+              <span class="mt-3 block text-[20px] font-bold text-ink">Call the API</span>
+            </button>
+            <div id="agent-panel-api" class="acc-body">
               <p class="max-w-[44ch] text-[14.5px] leading-relaxed text-ink-2">
                 <code class="code-chip">GET /api/convert?url=…</code> returns the same Markdown
-                with JSON and raw variants. <a href="/docs#routes" class="font-bold text-accent hover:text-accent-deep">API reference →</a>
+                with JSON and raw variants. <a href="/docs#posts" class="font-bold text-accent hover:text-accent-deep">API reference →</a>
               </p>
             </div>
           </div>

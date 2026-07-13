@@ -40,10 +40,10 @@ function annotateAndDedupe(thread: FxTweet[], requestedId: string, replies: FxTw
   return output
 }
 
-function focalAuthorThread(thread: FxTweet[], requestedId: string): FxTweet[] {
+function focalAuthorThread(thread: FxTweet[], requestedId: string, requestedHandle: string): FxTweet[] {
   const focal = thread.find((tweet) => tweet.id === requestedId)
   const authorId = focal?.author?.id
-  const handle = focal?.author?.screen_name?.toLowerCase()
+  const handle = focal?.author?.screen_name?.toLowerCase() ?? requestedHandle.toLowerCase()
   return thread.filter((tweet) => {
     if (tweet.id === requestedId) return true
     if (authorId) return tweet.author?.id === authorId
@@ -105,7 +105,9 @@ export async function fetchPosts(
 
   try {
     const assembledThread = await fetchFxFullThread(id)
-    const thread = contextMode === 'thread' ? focalAuthorThread(assembledThread, id) : assembledThread
+    const thread = contextMode === 'thread'
+      ? focalAuthorThread(assembledThread, id, handle)
+      : assembledThread
     if (repliesMode === 'off' || contextMode === 'thread') {
       return { tweets: annotateAndDedupe(thread, id, []), source: 'fxtwitter' }
     }
