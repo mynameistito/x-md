@@ -4,7 +4,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Convert', href: '/#convert' },
   { label: 'Agents', href: '/#agents' },
   { label: 'Docs', href: '/docs' },
-  { label: 'API', href: '/docs#routes' },
+  { label: 'API', href: '/docs#posts' },
 ]
 
 export function headerHtml(options: { page: 'landing' | 'docs' }) {
@@ -31,6 +31,15 @@ export function headerHtml(options: { page: 'landing' | 'docs' }) {
       </div>
       <div class="flex items-center gap-2">
         <a href="https://github.com/pc-style/x-md" target="_blank" rel="noreferrer" class="nav-link hidden h-9 px-3 sm:flex">GitHub</a>
+        <button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to dark mode" title="Switch color theme">
+          <svg class="theme-icon theme-icon-moon" width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M16.3 12.9A7 7 0 0 1 7.1 3.7 7 7 0 1 0 16.3 12.9Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <svg class="theme-icon theme-icon-sun" width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <circle cx="10" cy="10" r="3.25" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M10 1.75v1.5M10 16.75v1.5M18.25 10h-1.5M3.25 10h-1.5M15.83 4.17l-1.06 1.06M5.23 14.77l-1.06 1.06M15.83 15.83l-1.06-1.06M5.23 5.23 4.17 4.17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
         ${cta}
         <button type="button" class="menu-toggle" data-menu-toggle aria-expanded="false" aria-controls="mobile-menu" aria-label="Open menu">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -55,7 +64,7 @@ export function footerHtml() {
           <a href="/#convert" class="footer-link">Convert</a>
           <a href="/#agents" class="footer-link">Agents</a>
           <a href="/docs" class="footer-link">Docs</a>
-          <a href="/docs#routes" class="footer-link">API</a>
+          <a href="/docs#posts" class="footer-link">API</a>
           <a href="https://github.com/pc-style/x-md" target="_blank" rel="noreferrer" class="footer-link">GitHub</a>
         </div>
       </div>
@@ -89,4 +98,32 @@ export function setupMobileMenu(root: HTMLElement) {
   menu.addEventListener('click', (event) => {
     if ((event.target as HTMLElement).closest('a')) close()
   })
+}
+
+export function setupTheme(root: HTMLElement) {
+  const toggle = root.querySelector<HTMLButtonElement>('[data-theme-toggle]')
+  if (!toggle) return
+
+  const apply = (theme: 'light' | 'dark') => {
+    document.documentElement.dataset.theme = theme
+    document.documentElement.style.colorScheme = theme
+    document.querySelector('meta[name="theme-color"]')?.setAttribute(
+      'content',
+      theme === 'dark' ? '#11120f' : '#f7f6f2',
+    )
+    toggle.setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`)
+  }
+
+  toggle.addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'
+    localStorage.setItem('x-md-theme', next)
+    apply(next)
+  })
+
+  const preference = matchMedia('(prefers-color-scheme: dark)')
+  preference.addEventListener('change', (event) => {
+    if (!localStorage.getItem('x-md-theme')) apply(event.matches ? 'dark' : 'light')
+  })
+
+  apply(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light')
 }

@@ -1,5 +1,5 @@
 import './style.css'
-import { footerHtml, headerHtml, setupMobileMenu } from './chrome'
+import { footerHtml, headerHtml, setupMobileMenu, setupTheme } from './chrome'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
 const example = 'https://x.pcstyle.dev/trq212/status/2052809885763747935'
@@ -132,6 +132,7 @@ bun run build</pre>
 </div>`
 
 setupMobileMenu(app)
+setupTheme(app)
 setupSectionHighlight(app)
 
 function setupSectionHighlight(root: HTMLElement) {

@@ -11,7 +11,16 @@
     />
     <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#f7f6f2" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      (() => {
+        const saved = localStorage.getItem('x-md-theme')
+        const dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#11120f' : '#f7f6f2')
+      })()
+    </script>
     <title>Docs — x.md</title>
     <link rel="canonical" href="https://x.pcstyle.dev/docs" />
     <meta property="og:locale" content="en_US" />

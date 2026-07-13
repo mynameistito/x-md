@@ -1,7 +1,7 @@
 import './style.css'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import { footerHtml, headerHtml, setupMobileMenu } from './chrome'
+import { footerHtml, headerHtml, setupMobileMenu, setupTheme } from './chrome'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -471,6 +471,7 @@ app.innerHTML = `
 
 setupConvertForm(app)
 setupMobileMenu(app)
+setupTheme(app)
 setupCopyButtons(app)
 setupAccordion(app)
 setupMotion(app)
