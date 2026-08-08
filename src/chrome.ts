@@ -68,7 +68,32 @@ export function footerHtml() {
           <a href="https://github.com/pc-style/x-md" target="_blank" rel="noreferrer" class="footer-link">GitHub</a>
         </div>
       </div>
-      <p class="border-t border-line pt-6 text-[13.5px] text-ink-4">Open source, MIT. Not affiliated with X Corp.</p>
+      <div class="flex flex-col-reverse items-start gap-5 border-t border-line pt-6 sm:flex-row sm:items-center sm:justify-between">
+        <p class="text-[13.5px] text-ink-4">Open source, MIT. Not affiliated with X Corp.</p>
+        <a
+          href="https://www.producthunt.com/products/x-md/reviews/new?utm_source=badge-product_review&amp;utm_medium=badge&amp;utm_source=badge-x-md"
+          target="_blank"
+          rel="noreferrer"
+          class="ph-badge"
+        >
+          <img
+            src="https://api.producthunt.com/widgets/embed-image/v1/product_review.svg?product_id=1288590&amp;theme=light"
+            alt="x.md - change the host, read the post | Product Hunt"
+            width="250"
+            height="54"
+            loading="lazy"
+            class="ph-badge-light"
+          />
+          <img
+            src="https://api.producthunt.com/widgets/embed-image/v1/product_review.svg?product_id=1288590&amp;theme=dark"
+            alt="x.md - change the host, read the post | Product Hunt"
+            width="250"
+            height="54"
+            loading="lazy"
+            class="ph-badge-dark"
+          />
+        </a>
+      </div>
     </div>
   </footer>`
 }

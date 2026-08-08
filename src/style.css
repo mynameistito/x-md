@@ -628,6 +628,28 @@ html[data-theme="dark"] {
     @apply text-ink;
   }
 
+  .ph-badge {
+    @apply inline-flex rounded-[10px];
+    transition: transform 200ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .ph-badge:hover {
+    transform: translateY(-1px);
+  }
+
+  .ph-badge img {
+    @apply block h-[54px] w-[250px];
+  }
+
+  .ph-badge img.ph-badge-dark,
+  html[data-theme="dark"] .ph-badge img.ph-badge-light {
+    @apply hidden;
+  }
+
+  html[data-theme="dark"] .ph-badge img.ph-badge-dark {
+    @apply block;
+  }
+
   .sr-only {
     @apply absolute m-[-1px] h-px w-px overflow-hidden border-0 p-0 whitespace-nowrap;
     clip-path: inset(50%);
