@@ -13,6 +13,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
   const param = (key: string): string | undefined => (typeof req.query[key] === 'string' ? req.query[key] : undefined)
   const { status, headers, body } = oembedResponse(
     {
+      url: param('url'),
       text: param('text'),
       author: param('author'),
       status: param('status'),

@@ -69,7 +69,7 @@ curl -sS -G "https://x.pcstyle.dev/api/convert" \\
           <h3 class="mt-8 text-[19px] font-semibold text-ink">Chat embeds</h3>
           <p class="mt-3 text-[16px] leading-relaxed text-ink-3">Paste the same <code class="code-chip">x.pcstyle.dev</code> status URL into Discord, Telegram, or Slack. Preview bots receive Open Graph HTML: author title, post text, quote/poll details, multiple images on Discord, video streams, and an oEmbed engagement line. Agents and <code class="code-chip">curl</code> still get Markdown unless they send a preview-bot user agent. Force Markdown or JSON with <code class="code-chip">Accept</code> or <code class="code-chip">?format=</code>.</p>
           <pre class="code-block mt-6">curl -sS -A "Discordbot/2.0" "${example}"
-curl -sS "https://x.pcstyle.dev/oembed?text=💬%2038&amp;author=nthglsn&amp;status=2087920734702022870"</pre>
+curl -sS -G "https://x.pcstyle.dev/oembed" --data-urlencode "url=https://x.com/nthglsn/status/2087920734702022870"</pre>
         </article>
 
         <article id="browse" class="docs-article">

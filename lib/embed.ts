@@ -24,6 +24,7 @@ export interface EmbedOptions {
 }
 
 export interface OEmbedQuery {
+  url?: string | null
   text?: string | null
   author?: string | null
   status?: string | null
@@ -274,6 +275,7 @@ export function buildEmbedHtml(tweet: FxTweet, options: EmbedOptions): string {
   const multiImage = supportsNativeMultiImage(options.userAgent ?? '')
   const media = mediaPlan(tweet, multiImage)
   const oembed = new URL('/oembed', options.origin)
+  oembed.searchParams.set('url', canonical)
   oembed.searchParams.set('text', proof.slice(0, 255))
   oembed.searchParams.set('status', id)
   oembed.searchParams.set('author', handle)
@@ -340,17 +342,33 @@ export function embedResponse(
 }
 
 export function oembedPayload(query: OEmbedQuery, origin: string): Record<string, string> {
-  const author = query.author || 'i'
-  const status = query.status || '0'
-  const statusUrl = `https://x.com/${encodeURIComponent(author)}/status/${status}`
+  const fromUrl = query.url ? parseStatusUrlSafe(query.url) : undefined
+  const author = fromUrl?.handle || query.author || 'i'
+  const status = fromUrl?.id || query.status || '0'
+  const statusUrl = fromUrl?.canonicalUrl ?? `https://x.com/${encodeURIComponent(author)}/status/${status}`
   return {
     author_name: query.text || 'Embed',
     author_url: statusUrl,
     provider_name: query.provider || SITE_NAME,
     provider_url: query.provider ? statusUrl : origin,
     title: 'Embed',
-    type: 'rich',
+    type: 'link',
     version: '1.0',
+  }
+}
+
+function parseStatusUrlSafe(raw: string): { handle: string; id: string; canonicalUrl: string } | undefined {
+  try {
+    const parsed = new URL(raw)
+    const match = /^\/([^/?#]+)\/status\/(\d+)\/?$/.exec(parsed.pathname)
+    if (!match) return undefined
+    return {
+      handle: match[1],
+      id: match[2],
+      canonicalUrl: `https://x.com/${match[1]}/status/${match[2]}`,
+    }
+  } catch {
+    return undefined
   }
 }
 

@@ -31,3 +31,8 @@ export function wantsJson(format: string | null | undefined, accept: string): bo
   if (format) return format === 'json'
   return accept.includes('application/json')
 }
+
+export function wantsMarkdown(format: string | null | undefined, accept: string): boolean {
+  if (format) return format === 'markdown' || format === 'obsidian'
+  return accept.includes('text/markdown')
+}

@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { ConvertError, acceptPrefersHtml, convertTweet, markdownResponse } from '../lib/converter.js'
 import { embedResponse, isEmbedUserAgent } from '../lib/embed.js'
-import { requestOrigin, setCorsHeaders, wantsJson } from '../lib/http.js'
+import { requestOrigin, setCorsHeaders, wantsJson, wantsMarkdown } from '../lib/http.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res)
@@ -16,8 +16,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userAgent = String(req.headers['user-agent'] ?? '')
   const requestedFormat = param('format')
   const asJson = wantsJson(requestedFormat, accept)
-  const asEmbed = !requestedFormat && !asJson && isEmbedUserAgent(userAgent)
-  const asHtml = !requestedFormat && !asJson && !asEmbed && acceptPrefersHtml(accept)
+  const asMarkdown = wantsMarkdown(requestedFormat, accept)
+  const asEmbed = !requestedFormat && !asJson && !asMarkdown && isEmbedUserAgent(userAgent)
+  const asHtml = !requestedFormat && !asJson && !asMarkdown && !asEmbed && acceptPrefersHtml(accept)
 
   try {
     const result = await convertTweet({

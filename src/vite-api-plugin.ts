@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 import { browse, browseResponse, type BrowseResource } from '../lib/browse'
 import { ConvertError as BrowseError } from '../lib/errors'
-import { requestOrigin, setCorsHeaders, wantsJson } from '../lib/http'
+import { requestOrigin, setCorsHeaders, wantsJson, wantsMarkdown } from '../lib/http'
 import {
   acceptPrefersHtml,
   ConvertError,
@@ -54,8 +54,9 @@ async function handleConvert(
   const userAgent = String(req.headers['user-agent'] ?? '')
   const requestedFormat = url.searchParams.get('format')
   const asJson = wantsJson(requestedFormat, accept)
-  const asEmbed = !requestedFormat && !asJson && isEmbedUserAgent(userAgent)
-  const asHtml = !requestedFormat && !asJson && !asEmbed && acceptPrefersHtml(accept)
+  const asMarkdown = wantsMarkdown(requestedFormat, accept)
+  const asEmbed = !requestedFormat && !asJson && !asMarkdown && isEmbedUserAgent(userAgent)
+  const asHtml = !requestedFormat && !asJson && !asMarkdown && !asEmbed && acceptPrefersHtml(accept)
 
   try {
     const result = await convertTweet({
@@ -101,6 +102,7 @@ async function handleOembed(url: URL, req: IncomingMessage, res: ServerResponse)
   if (guardMethod(req, res)) return true
   const { status, headers, body } = oembedResponse(
     {
+      url: url.searchParams.get('url'),
       text: url.searchParams.get('text'),
       author: url.searchParams.get('author'),
       status: url.searchParams.get('status'),

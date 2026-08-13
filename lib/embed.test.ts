@@ -123,6 +123,7 @@ describe('embed HTML', () => {
     expect(html).toContain('og:image:alt" content="deal screenshot"')
     expect(html).toContain('type="application/json+oembed"')
     expect(html).toContain('https://x.pcstyle.dev/oembed?')
+    expect(html).toContain('url=https%3A%2F%2Fx.com%2Fnthglsn%2Fstatus%2F2087920734702022870')
     expect(html).toContain('text=%F0%9F%92%AC+38+++%F0%9F%94%81+14+++%E2%9D%A4%EF%B8%8F+469+++%F0%9F%91%81%EF%B8%8F+78.4K')
   })
 
@@ -250,7 +251,12 @@ describe('embed and oEmbed responses', () => {
   test('oembedPayload maps query fields the way Discord reads them', () => {
     expect(
       oembedPayload(
-        { text: '💬 38   🔁 14', author: 'nthglsn', status: '2087920734702022870' },
+        {
+          url: 'https://x.com/nthglsn/status/2087920734702022870',
+          text: '💬 38   🔁 14',
+          author: 'nthglsn',
+          status: '2087920734702022870',
+        },
         'https://x.pcstyle.dev',
       ),
     ).toEqual({
@@ -259,7 +265,7 @@ describe('embed and oEmbed responses', () => {
       provider_name: 'x.md',
       provider_url: 'https://x.pcstyle.dev',
       title: 'Embed',
-      type: 'rich',
+      type: 'link',
       version: '1.0',
     })
   })
