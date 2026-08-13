@@ -307,7 +307,7 @@ export function markdownResponse(result: ConvertSuccess, asJson = false, asHtml 
   body: string
 } {
   const sharedHeaders: Record<string, string> = {
-    Vary: 'Accept',
+    Vary: 'Accept, User-Agent',
     'X-Converter': 'x-md',
     'X-Source': result.source,
     'X-Post-Count': String(result.postCount),

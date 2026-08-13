@@ -34,7 +34,7 @@ app.innerHTML = `
         <article id="start" class="docs-article">
           <p class="eyebrow eyebrow-muted mb-3">Hosted API</p>
           <h2 class="text-[24px] leading-tight font-semibold text-ink">Replace the host</h2>
-          <p class="mt-3 text-[16px] leading-relaxed text-ink-3">Keep a public status path and replace <code class="code-chip">x.com</code> with <code class="code-chip">x.pcstyle.dev</code>. Markdown is compact by default, and every returned post and reply includes its X source URL.</p>
+          <p class="mt-3 text-[16px] leading-relaxed text-ink-3">Keep a public status path and replace <code class="code-chip">x.com</code> with <code class="code-chip">x.pcstyle.dev</code>. Markdown is compact by default, and every returned post and reply includes its X source URL. Discord, Telegram, and Slack get Open Graph embeds instead of the Markdown page.</p>
           <pre class="code-block mt-6">https://x.com/trq212/status/2052809885763747935
         ↓
 ${example}
@@ -66,6 +66,10 @@ curl -sS "${example}?context=thread&amp;thread=20"
 curl -sS -G "https://x.pcstyle.dev/api/convert" \\
   --data-urlencode "url=https://x.com/trq212/status/2052809885763747935"</pre>
           <p class="mt-4 text-[14px] leading-relaxed text-ink-4"><code class="code-chip">thread=off</code> returns only the requested post. Obsidian output is expanded regardless of <code class="code-chip">full</code>. Direct X CDN media URLs can expire or change.</p>
+          <h3 class="mt-8 text-[19px] font-semibold text-ink">Chat embeds</h3>
+          <p class="mt-3 text-[16px] leading-relaxed text-ink-3">Paste the same <code class="code-chip">x.pcstyle.dev</code> status URL into Discord, Telegram, or Slack. Preview bots receive Open Graph HTML: author title, post text, quote/poll details, multiple images on Discord, video streams, and an oEmbed engagement line. Agents and <code class="code-chip">curl</code> still get Markdown unless they send a preview-bot user agent. Force Markdown or JSON with <code class="code-chip">Accept</code> or <code class="code-chip">?format=</code>.</p>
+          <pre class="code-block mt-6">curl -sS -A "Discordbot/2.0" "${example}"
+curl -sS -G "https://x.pcstyle.dev/oembed" --data-urlencode "url=https://x.com/nthglsn/status/2087920734702022870"</pre>
         </article>
 
         <article id="browse" class="docs-article">

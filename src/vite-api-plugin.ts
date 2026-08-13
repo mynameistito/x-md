@@ -3,13 +3,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 import { browse, browseResponse, type BrowseResource } from '../lib/browse'
 import { ConvertError as BrowseError } from '../lib/errors'
-import { setCorsHeaders, wantsJson } from '../lib/http'
+import { requestOrigin, setCorsHeaders, wantsJson, wantsMarkdown } from '../lib/http'
 import {
   acceptPrefersHtml,
   ConvertError,
   convertTweet,
   markdownResponse,
 } from '../lib/converter'
+import { embedResponse, isEmbedUserAgent, oembedResponse } from '../lib/embed'
 
 const HANDLE = '[A-Za-z0-9_]{1,15}'
 
@@ -50,9 +51,12 @@ async function handleConvert(
   if (guardMethod(req, res)) return true
 
   const accept = String(req.headers.accept ?? '')
+  const userAgent = String(req.headers['user-agent'] ?? '')
   const requestedFormat = url.searchParams.get('format')
   const asJson = wantsJson(requestedFormat, accept)
-  const asHtml = !requestedFormat && !asJson && acceptPrefersHtml(accept)
+  const asMarkdown = wantsMarkdown(requestedFormat, accept)
+  const asEmbed = !requestedFormat && !asJson && !asMarkdown && isEmbedUserAgent(userAgent)
+  const asHtml = !requestedFormat && !asJson && !asMarkdown && !asEmbed && acceptPrefersHtml(accept)
 
   try {
     const result = await convertTweet({
@@ -68,7 +72,9 @@ async function handleConvert(
       replies: url.searchParams.get('replies'),
     })
 
-    const { status, headers, body } = markdownResponse(result, asJson, asHtml)
+    const { status, headers, body } = asEmbed
+      ? embedResponse(result, { origin: requestOrigin(req), userAgent })
+      : markdownResponse(result, asJson, asHtml)
     res.statusCode = status
     for (const [key, value] of Object.entries(headers)) {
       res.setHeader(key, value)
@@ -90,6 +96,28 @@ async function handleConvert(
   return true
 }
 
+async function handleOembed(url: URL, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  if (url.pathname.replace(/\/$/, '') !== '/oembed') return false
+  setCorsHeaders(res)
+  if (guardMethod(req, res)) return true
+  const { status, headers, body } = oembedResponse(
+    {
+      url: url.searchParams.get('url'),
+      text: url.searchParams.get('text'),
+      author: url.searchParams.get('author'),
+      status: url.searchParams.get('status'),
+      provider: url.searchParams.get('provider'),
+    },
+    requestOrigin(req),
+  )
+  res.statusCode = status
+  for (const [key, value] of Object.entries(headers)) {
+    res.setHeader(key, value)
+  }
+  res.end(req.method === 'HEAD' ? undefined : body)
+  return true
+}
+
 async function handleBrowse(url: URL, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const path = url.pathname.replace(/\/$/, '') || '/'
   let resource: BrowseResource | undefined
@@ -98,7 +126,7 @@ async function handleBrowse(url: URL, req: IncomingMessage, res: ServerResponse)
   else if (path === '/search') resource = 'search'
   else {
     const match = path.match(new RegExp(`^\/(${HANDLE})(?:\/(followers|following))?$`))
-    if (!match || ['api', 'docs', 'search'].includes(match[1] ?? '')) return false
+    if (!match || ['api', 'docs', 'search', 'oembed'].includes(match[1] ?? '')) return false
     handle = match[1]
     resource = (match[2] as BrowseResource | undefined) ?? 'profile'
   }
@@ -131,7 +159,10 @@ function installConvertMiddleware(middlewares: Connect.Server) {
           return
         }
         const url = new URL(req.url, 'http://localhost')
-        const handled = await handleConvert(url, req, res) || await handleBrowse(url, req, res)
+        const handled =
+          (await handleOembed(url, req, res)) ||
+          (await handleConvert(url, req, res)) ||
+          (await handleBrowse(url, req, res))
         if (!handled) next()
       } catch (error) {
         next(error as Error)

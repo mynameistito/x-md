@@ -34,6 +34,8 @@ export interface FxMediaItem {
   duration_ms?: number
   format?: string
   bitrate?: number
+  alt?: string
+  altText?: string
   variants?: Array<{
     url: string
     content_type?: string
@@ -47,12 +49,31 @@ export interface FxMediaItem {
   }>
 }
 
+export interface FxMosaic {
+  type?: string
+  photos?: FxMediaItem[]
+  formats?: { jpeg?: string; webp?: string }
+}
+
 export interface FxMedia {
   photos?: FxMediaItem[]
   videos?: FxMediaItem[]
   animated?: FxMediaItem[]
-  mosaic?: { photos?: FxMediaItem[] }
+  mosaic?: FxMosaic
   all?: FxMediaItem[]
+}
+
+export interface FxPollChoice {
+  label?: string
+  count?: number
+  percentage?: number
+}
+
+export interface FxPoll {
+  choices?: FxPollChoice[]
+  total_votes?: number
+  time_left_en?: string
+  ends_at?: string
 }
 
 export interface FxArticleBlock {
@@ -105,7 +126,7 @@ export interface FxTweet {
   quote?: FxTweet
   reposted_by?: FxAuthor | null
   article?: FxArticle
-  poll?: unknown
+  poll?: FxPoll
   community_note?: unknown
   /** How this post relates to the status requested by the caller. */
   context?: 'parent' | 'post' | 'thread' | 'reply'
@@ -152,6 +173,7 @@ function normalizeMediaItem(item: FxMediaItem): FxMediaItem {
   }))
   return {
     ...item,
+    alt: item.alt ?? item.altText,
     duration_ms: item.duration_ms ?? (item.duration != null ? item.duration * 1000 : undefined),
     variants: item.variants ?? formatVariants,
   }

@@ -58,7 +58,7 @@ describe('output selection', () => {
     const result = await convertTweet({ url: validUrl })
     const response = markdownResponse(result)
     expect(response.headers).toMatchObject({
-      Vary: 'Accept',
+      Vary: 'Accept, User-Agent',
       'Cache-Control': 'public, max-age=300',
       'Vercel-CDN-Cache-Control': 'public, s-maxage=300',
     })

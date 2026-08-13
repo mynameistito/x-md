@@ -31,7 +31,7 @@ curl -sS -G 'https://x.pcstyle.dev/api/convert' \
   --data-urlencode 'url=https://x.com/handle/status/1234567890'
 ```
 
-Browsers that request HTML get a readable page containing the Markdown. Agents can explicitly request `text/markdown`.
+Browsers that request HTML get a readable page containing the Markdown. Agents can explicitly request `text/markdown`. Discord, Telegram, Slack, and other preview bots receive Open Graph embed HTML for the same status URL, including multiple images on Discord, video streams, quote/poll text, and an oEmbed engagement line.
 
 ## Post conversion
 
@@ -63,6 +63,8 @@ curl -sS 'https://x.pcstyle.dev/handle/status/1234567890?format=json'
 ```
 
 JSON conversion responses contain `url`, `markdown`, raw `posts`, `compact`, `warnings`, `postCount`, `source`, `cache`, and `format`. Media in both Markdown and `posts` includes direct video data when the upstream provider exposes it; availability and lifetime of X CDN URLs are controlled by X.
+
+Preview bots hitting `GET /:handle/status/:id` receive embed HTML instead of Markdown. `GET /oembed` is the Discord oEmbed document advertised from that HTML. Explicit `?format=` or `Accept: application/json` / `text/markdown` still wins over user-agent detection.
 
 ## Browse profiles and X
 
@@ -146,7 +148,8 @@ Deploy with Vercel after `bun run build`; `vercel.json` configures `dist`, the A
 ```text
 api/convert.ts     Post conversion handler
 api/browse.ts      Profile, search, followers, and following handler
-lib/               Providers, rendering, pagination, and cache
+api/oembed.ts      Discord oEmbed JSON for chat previews
+lib/               Providers, rendering, pagination, cache, and embeds
 src/               Vite landing page and rendered documentation
 ```
 
