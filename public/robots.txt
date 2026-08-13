@@ -1,5 +1,6 @@
 User-agent: *
 Allow: /
+Allow: /oembed
 Disallow: /api/
 
 Sitemap: https://x.pcstyle.dev/sitemap.xml

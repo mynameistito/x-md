@@ -16,6 +16,10 @@
       "destination": "/api/convert?handle=:handle&id=:id"
     },
     {
+      "source": "/oembed",
+      "destination": "/api/oembed"
+    },
+    {
       "source": "/search",
       "destination": "/api/browse?resource=search"
     },

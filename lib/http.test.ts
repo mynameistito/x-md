@@ -1,5 +1,19 @@
 import { describe, expect, test } from 'vitest'
-import { wantsJson } from './http.js'
+import { requestOrigin, wantsJson } from './http.js'
+
+describe('requestOrigin', () => {
+  test('prefers forwarded host and proto', () => {
+    expect(
+      requestOrigin({
+        headers: { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'x.pcstyle.dev', host: 'localhost:3000' },
+      }),
+    ).toBe('https://x.pcstyle.dev')
+  })
+
+  test('falls back to the hosted origin', () => {
+    expect(requestOrigin({ headers: {} })).toBe('https://x.pcstyle.dev')
+  })
+})
 
 describe('wantsJson', () => {
   test('gives an explicit format precedence over Accept', () => {
