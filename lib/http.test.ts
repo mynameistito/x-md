@@ -2,16 +2,31 @@ import { describe, expect, test } from 'vitest'
 import { requestOrigin, wantsJson, wantsMarkdown } from './http.js'
 
 describe('requestOrigin', () => {
-  test('prefers forwarded host and proto', () => {
+  test('uses the request host for known public and local hosts', () => {
     expect(
       requestOrigin({
-        headers: { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'x.pcstyle.dev', host: 'localhost:3000' },
+        headers: { 'x-forwarded-proto': 'https', host: 'x.pcstyle.dev' },
+      }),
+    ).toBe('https://x.pcstyle.dev')
+    expect(
+      requestOrigin({
+        headers: { host: 'localhost:5173' },
+        protocol: 'http',
+      }),
+    ).toBe('http://localhost:5173')
+  })
+
+  test('ignores a forged forwarded host', () => {
+    expect(
+      requestOrigin({
+        headers: { 'x-forwarded-host': 'evil.example', host: 'x.pcstyle.dev' },
       }),
     ).toBe('https://x.pcstyle.dev')
   })
 
   test('falls back to the hosted origin', () => {
     expect(requestOrigin({ headers: {} })).toBe('https://x.pcstyle.dev')
+    expect(requestOrigin({ headers: { host: 'evil.example' } })).toBe('https://x.pcstyle.dev')
   })
 })
 
