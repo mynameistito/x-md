@@ -51,11 +51,13 @@ const quoted: FxTweet = {
 }
 
 describe('embed user agents', () => {
-  test('recognizes Discord, Telegram, Slack, and Discord Firefox 92', () => {
+  test('recognizes Discord, Telegram, and Slack preview bots', () => {
     expect(isEmbedUserAgent('Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)')).toBe(true)
     expect(isEmbedUserAgent('TelegramBot (like TwitterBot)')).toBe(true)
     expect(isEmbedUserAgent('Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)')).toBe(true)
-    expect(isEmbedUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:92.0) Gecko/20100101 Firefox/92.0')).toBe(true)
+    expect(isEmbedUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:92.0) Gecko/20100101 Firefox/92.0')).toBe(false)
+    expect(isEmbedUserAgent('Mozilla/5.0 Telegram iOS')).toBe(false)
+    expect(isEmbedUserAgent('Mozilla/5.0 Discord/0.0.300')).toBe(false)
     expect(isEmbedUserAgent('curl/8.7.1')).toBe(false)
     expect(isEmbedUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/131.0.0.0')).toBe(false)
   })
@@ -70,6 +72,7 @@ describe('counts and description', () => {
   test('formats compact social-proof counts', () => {
     expect(formatCount(38)).toBe('38')
     expect(formatCount(78400)).toBe('78.4K')
+    expect(formatCount(999_999)).toBe('1.00M')
     expect(formatCount(1_250_000)).toBe('1.25M')
     expect(socialProof(photoTweet)).toBe('💬 38   🔁 14   ❤️ 469   👁️ 78.4K')
   })
@@ -130,6 +133,47 @@ describe('embed HTML', () => {
     })
     expect(html).toContain('https://mosaic.fxtwitter.com/jpeg/one/two')
     expect(html).not.toContain('https://pbs.twimg.com/two.jpg')
+  })
+
+  test('Telegram uses the quoted mosaic for quote-only multi-photo posts', () => {
+    const html = buildEmbedHtml(
+      {
+        id: '5',
+        text: 'look',
+        author: { name: 'Ada', screen_name: 'ada' },
+        quote: {
+          id: '6',
+          text: 'photos',
+          author: { name: 'Grace', screen_name: 'hopper' },
+          media: {
+            photos: [
+              { type: 'photo', url: 'https://pbs.twimg.com/q1.jpg' },
+              { type: 'photo', url: 'https://pbs.twimg.com/q2.jpg' },
+            ],
+            mosaic: { formats: { jpeg: 'https://mosaic.fxtwitter.com/jpeg/quote' } },
+          },
+        },
+      },
+      { origin: 'https://x.pcstyle.dev', userAgent: 'TelegramBot' },
+    )
+    expect(html).toContain('https://mosaic.fxtwitter.com/jpeg/quote')
+    expect(html).not.toContain('https://pbs.twimg.com/q2.jpg')
+  })
+
+  test('does not emit HLS URLs as og:video', () => {
+    const html = buildEmbedHtml(
+      {
+        id: '8',
+        text: 'stream',
+        author: { name: 'Ada', screen_name: 'ada' },
+        media: {
+          videos: [{ type: 'video', url: 'https://video.twimg.com/clip.m3u8', thumbnail_url: 'https://pbs.twimg.com/thumb.jpg' }],
+        },
+      },
+      { origin: 'https://x.pcstyle.dev', userAgent: 'Discordbot/2.0' },
+    )
+    expect(html).not.toContain('og:video')
+    expect(html).toContain('og:image" content="https://pbs.twimg.com/thumb.jpg"')
   })
 
   test('videos emit player-stream tags and scaled dimensions', () => {

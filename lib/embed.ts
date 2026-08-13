@@ -6,7 +6,7 @@ export const THEME_COLOR = '#146c43'
 
 /** Social preview crawlers that should receive Open Graph HTML. */
 export const EMBED_UA_REGEX =
-  /discordbot|telegrambot|slackbot|slack-img|whatsapp|facebookexternalhit|facebot|linkedinbot|skypeuripreview|vkshare|pinterest|redditbot|embedly|iframely|steamchaturllookup|revoltchat|matrixpreviewbot|discord\/|telegram|firefox\/92/i
+  /discordbot|telegrambot|slackbot|slack-img|whatsapp|facebookexternalhit|facebot|linkedinbot|skypeuripreview|vkshare|pinterest|redditbot|embedly|iframely|steamchaturllookup|revoltchat|matrixpreviewbot/i
 
 export const NATIVE_MULTI_IMAGE_UA_REGEX = /discordbot|matrixpreviewbot/i
 
@@ -40,6 +40,7 @@ function escapeAttr(value: string): string {
 
 export function formatCount(num: number): string {
   if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`
+  if (num >= 995_000) return '1.00M'
   if (num >= 1e3) return `${(num / 1e3).toFixed(1)}K`
   return String(num)
 }
@@ -100,11 +101,18 @@ export function pickFocalTweet(posts: FxTweet[], requestedId?: string): FxTweet 
   return posts.find((post) => post.context === 'post') ?? posts[0]
 }
 
+function isPlayableMp4(url: string, contentType?: string): boolean {
+  if (contentType === 'video/mp4') return true
+  return /\.mp4(?:$|[?#])/i.test(url)
+}
+
 function bestVideoUrl(item: FxMediaItem): string | undefined {
   const mp4s = item.variants
-    ?.filter((variant) => variant.url && (variant.content_type === 'video/mp4' || variant.url.includes('.mp4')))
+    ?.filter((variant) => variant.url && isPlayableMp4(variant.url, variant.content_type))
     .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0))
-  return mp4s?.[0]?.url ?? item.url
+  if (mp4s?.[0]?.url) return mp4s[0].url
+  if (item.url && isPlayableMp4(item.url, item.format)) return item.url
+  return undefined
 }
 
 function videoDimensions(item: FxMediaItem): { width: number; height: number } {
@@ -183,27 +191,42 @@ interface MediaPlan {
   tags: string[]
 }
 
+function stillImagePlan(item: FxMediaItem | undefined): MediaPlan | undefined {
+  const url = item?.thumbnail_url ?? item?.url
+  if (!url || /\.m3u8(?:$|[?#])/i.test(url)) return undefined
+  return {
+    card: 'summary_large_image',
+    tags: [
+      `<meta property="twitter:image" content="${escapeAttr(url)}">`,
+      `<meta property="og:image" content="${escapeAttr(url)}">`,
+    ],
+  }
+}
+
 function mediaPlan(tweet: FxTweet, multiImage: boolean): MediaPlan {
   const own = tweet.media
   const quoted = tweet.quote?.media
   const video = firstVideo(own) ?? firstVideo(quoted)
-  if (video && bestVideoUrl(video)) {
-    return { card: 'player', tags: videoTags(video) }
+  if (video) {
+    if (bestVideoUrl(video)) return { card: 'player', tags: videoTags(video) }
+    const still = stillImagePlan(video)
+    if (still) return still
   }
 
   const photos = own?.photos?.filter((photo) => photo.url) ?? []
   const quotedPhotos = quoted?.photos?.filter((photo) => photo.url) ?? []
-  const mosaic = mosaicUrl(own) ?? mosaicUrl(quoted)
+  const ownMosaic = mosaicUrl(own)
+  const quotedMosaic = mosaicUrl(quoted)
 
   if (photos.length > 1 && multiImage) {
     return { card: 'summary_large_image', tags: photos.flatMap(photoTags) }
   }
-  if (mosaic && photos.length > 1) {
+  if (ownMosaic && photos.length > 1) {
     return {
       card: 'summary_large_image',
       tags: [
-        `<meta property="twitter:image" content="${escapeAttr(mosaic)}">`,
-        `<meta property="og:image" content="${escapeAttr(mosaic)}">`,
+        `<meta property="twitter:image" content="${escapeAttr(ownMosaic)}">`,
+        `<meta property="og:image" content="${escapeAttr(ownMosaic)}">`,
       ],
     }
   }
@@ -212,6 +235,15 @@ function mediaPlan(tweet: FxTweet, multiImage: boolean): MediaPlan {
   }
   if (quotedPhotos.length > 1 && multiImage) {
     return { card: 'summary_large_image', tags: quotedPhotos.flatMap(photoTags) }
+  }
+  if (quotedMosaic && quotedPhotos.length > 1) {
+    return {
+      card: 'summary_large_image',
+      tags: [
+        `<meta property="twitter:image" content="${escapeAttr(quotedMosaic)}">`,
+        `<meta property="og:image" content="${escapeAttr(quotedMosaic)}">`,
+      ],
+    }
   }
   if (quotedPhotos[0]) {
     return { card: 'summary_large_image', tags: photoTags(quotedPhotos[0]) }
@@ -255,7 +287,7 @@ export function buildEmbedHtml(tweet: FxTweet, options: EmbedOptions): string {
     `<meta property="og:title" content="${escapeAttr(title)}">`,
     `<meta property="og:description" content="${escapeAttr(description)}">`,
     `<meta property="og:site_name" content="${SITE_NAME}">`,
-    `<meta property="theme-color" content="${THEME_COLOR}">`,
+    `<meta name="theme-color" content="${THEME_COLOR}">`,
     `<meta property="twitter:card" content="${media.card}">`,
     `<meta property="twitter:title" content="${escapeAttr(title)}">`,
     `<meta property="twitter:site" content="@${escapeAttr(handle)}">`,
