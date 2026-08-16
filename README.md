@@ -2,6 +2,9 @@
 
 Turn public X posts, conversations, profiles, search results, and social graphs into compact Markdown for agents. The hosted API is available at [x.pcstyle.dev](https://x.pcstyle.dev); no X API key is required for the default provider path.
 
+> [!IMPORTANT]
+> **Status: beta.** Routes and output fields can change as upstream X providers change. The compatibility target for self-hosting is Bun 1.3.10 and the locked dependencies in this repository.
+
 **Not affiliated with X Corp. Public lists are not available.**
 
 ## What it returns
@@ -115,21 +118,38 @@ bunx skills add pc-style/x-md -g -y --skill browse-x
 
 The skill uses `https://x.pcstyle.dev`; it does not require a local checkout or local API keys.
 
+The skills CLI command follows the repository's current default branch. This project has no tag or release to pin yet, so treat that command as a convenience install: review the copied `SKILL.md` and script before use. For an immutable audit, inspect commit `146d116a19c93da81a0ae741c19bc3bd74435229` and copy `skills/browse-x` from that checkout.
+
 ## Caching and reliability
 
 FxTwitter is the primary data provider and X's syndication endpoint is the fallback. Self-hosted deployments may additionally configure Context.dev and Firecrawl. `X-Source` reports `fxtwitter`, `syndication`, `contextdev`, or `firecrawl`; `X-Cache` reports cache status. Browse endpoints use FxTwitter directly.
 
 Successful responses are cached for about one hour by default (`CACHE_TTL_SECONDS=3600`) and send cache headers unless bypassed. `nocache=true` bypasses the application cache, but it cannot bypass upstream caches. Public X data can be missing, delayed, rate-limited, deleted, protected, or shaped differently by upstream providers, so context, counts, media variants, and pagination cursors are best effort. The API does not authenticate to private accounts and does not provide public lists.
 
+## Trust and privacy boundaries
+
+- The hosted service receives the public X URL, handle, or search query you request and sends it to FxTwitter or X's public syndication service. Successful results are cached for about one hour and can be served to other callers requesting the same public resource.
+- Optional Context.dev and Firecrawl fallbacks are disabled unless a self-hosted operator configures their API keys. When enabled, the public X URL is sent to that provider.
+- The hosted `browse-x` skill sends its arguments to `x.pcstyle.dev`. Do not put secrets or private-account information in URLs or search terms.
+- Media links point to upstream X/FxTwitter CDNs. Fetching those links is outside x.md's cache and privacy boundary.
+
+x.md is read-only and does not accept X credentials, post content, or account mutations. It is the canonical implementation, has no successor, and is not affiliated with X Corp.
+
 ## Self-host
 
 ```bash
-git clone https://github.com/pc-style/x-md.git
+REF=146d116a19c93da81a0ae741c19bc3bd74435229
+git init x-md
+git -C x-md remote add origin https://github.com/pc-style/x-md.git
+git -C x-md fetch --depth 1 origin "$REF"
+git -C x-md checkout --detach "$REF"
 cd x-md
-bun install
+bun install --frozen-lockfile
 cp .env.local.example .env.local
 bun run dev
 ```
+
+The commit pin and lockfile make this a reviewable source snapshot. No signed image, deployment artifact, tag, or release checksum is published yet; update `REF` deliberately.
 
 Optional environment variables:
 
