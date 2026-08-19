@@ -204,11 +204,15 @@ function stillImagePlan(item: FxMediaItem | undefined): MediaPlan | undefined {
   }
 }
 
-function mediaPlan(tweet: FxTweet, multiImage: boolean): MediaPlan {
+function mediaPlan(tweet: FxTweet, multiImage: boolean, staticVideoFallback: boolean): MediaPlan {
   const own = tweet.media
   const quoted = tweet.quote?.media
   const video = firstVideo(own) ?? firstVideo(quoted)
   if (video) {
+    if (staticVideoFallback && video.thumbnail_url) {
+      const still = stillImagePlan(video)
+      if (still) return still
+    }
     if (bestVideoUrl(video)) return { card: 'player', tags: videoTags(video) }
     const still = stillImagePlan(video)
     if (still) return still
@@ -272,8 +276,9 @@ export function buildEmbedHtml(tweet: FxTweet, options: EmbedOptions): string {
   const title = `${name} (@${handle})`
   const description = embedDescription(tweet)
   const proof = socialProof(tweet) ?? 'Embed'
-  const multiImage = supportsNativeMultiImage(options.userAgent ?? '')
-  const media = mediaPlan(tweet, multiImage)
+  const userAgent = options.userAgent ?? ''
+  const multiImage = supportsNativeMultiImage(userAgent)
+  const media = mediaPlan(tweet, multiImage, /slackbot|slack-img/i.test(userAgent))
   const oembed = new URL('/oembed', options.origin)
   oembed.searchParams.set('url', canonical)
   oembed.searchParams.set('text', proof.slice(0, 255))

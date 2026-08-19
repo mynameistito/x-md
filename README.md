@@ -34,7 +34,7 @@ curl -sS -G 'https://x.pcstyle.dev/api/convert' \
   --data-urlencode 'url=https://x.com/handle/status/1234567890'
 ```
 
-Browsers that request HTML get a readable page containing the Markdown. Agents can explicitly request `text/markdown`. Discord, Telegram, Slack, and other preview bots receive Open Graph embed HTML for the same status URL, including multiple images on Discord, video streams, quote/poll text, and an oEmbed engagement line.
+Browsers that request HTML get a readable page containing the Markdown. Agents can explicitly request `text/markdown`. Discord, Telegram, Slack, and other preview bots receive Open Graph embed HTML for the same status URL, including multiple images on Discord, video streams where supported, video thumbnails on Slack, quote/poll text, and an oEmbed engagement line.
 
 ## Post conversion
 

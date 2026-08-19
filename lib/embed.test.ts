@@ -210,6 +210,33 @@ describe('embed HTML', () => {
     expect(html).toContain('provider=')
   })
 
+  test('Slack gets a video thumbnail instead of an unsupported player card', () => {
+    const html = buildEmbedHtml(
+      {
+        id: '9',
+        text: 'watch this',
+        author: { name: 'Ada', screen_name: 'ada' },
+        media: {
+          videos: [
+            {
+              type: 'video',
+              url: 'https://video.twimg.com/video.mp4',
+              thumbnail_url: 'https://pbs.twimg.com/thumb.jpg',
+            },
+          ],
+        },
+      },
+      {
+        origin: 'https://x.pcstyle.dev',
+        userAgent: 'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)',
+      },
+    )
+    expect(html).toContain('twitter:card" content="summary_large_image"')
+    expect(html).toContain('twitter:image" content="https://pbs.twimg.com/thumb.jpg"')
+    expect(html).toContain('og:image" content="https://pbs.twimg.com/thumb.jpg"')
+    expect(html).not.toContain('og:video')
+  })
+
   test('text-only posts fall back to the author avatar', () => {
     const html = buildEmbedHtml(
       { id: '3', text: 'just words', author: { name: 'Ada', screen_name: 'ada', avatar_url: 'https://pbs.twimg.com/ada.jpg' } },
