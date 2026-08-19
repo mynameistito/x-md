@@ -352,7 +352,7 @@ export function oembedPayload(query: OEmbedQuery, origin: string): Record<string
     provider_name: query.provider || SITE_NAME,
     provider_url: query.provider ? statusUrl : origin,
     title: 'Embed',
-    type: 'link',
+    type: query.provider ? 'rich' : 'link',
     version: '1.0',
   }
 }

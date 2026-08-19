@@ -269,4 +269,21 @@ describe('embed and oEmbed responses', () => {
       version: '1.0',
     })
   })
+
+  test('marks video oEmbed payloads as rich so Slack renders the media', () => {
+    expect(
+      oembedPayload(
+        {
+          url: 'https://x.com/hams/status/2089772419175047410',
+          text: '❤️ 1.1K',
+          provider: '❤️ 1.1K',
+        },
+        'https://x.pcstyle.dev',
+      ),
+    ).toMatchObject({
+      provider_name: '❤️ 1.1K',
+      provider_url: 'https://x.com/hams/status/2089772419175047410',
+      type: 'rich',
+    })
+  })
 })
