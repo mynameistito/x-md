@@ -17,7 +17,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     for (const [key, header] of Object.entries(response.headers)) res.setHeader(key, header)
     return req.method === 'HEAD' ? res.status(response.status).end() : res.status(response.status).send(response.body)
   } catch (error) {
-    if (error instanceof ConvertError) return res.status(error.status).json({ error: error.message, code: error.code })
+    if (error instanceof ConvertError) {
+      if (error.status === 503) res.setHeader('Retry-After', '30')
+      return res.status(error.status).json({ error: error.message, code: error.code })
+    }
     console.error(error)
     return res.status(500).json({ error: 'Internal browse error' })
   }
