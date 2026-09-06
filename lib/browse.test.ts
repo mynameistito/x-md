@@ -7,6 +7,11 @@ vi.mock('./cache.js', () => ({
   withCache: vi.fn(async (_key: string, _nocache: boolean, fn: () => Promise<unknown>) => ({ value: await fn(), status: 'miss' })),
 }))
 
+vi.mock('./firecrawl.js', () => ({
+  firecrawlSearchConfigured: vi.fn(() => true),
+  searchFirecrawlStatuses: vi.fn(),
+}))
+
 vi.mock('./fxtwitter.js', () => ({
   fetchFxProfile: vi.fn(),
   fetchFxProfileStatuses: vi.fn(),
@@ -17,6 +22,7 @@ vi.mock('./fxtwitter.js', () => ({
 import { browse, browseResponse, isOriginalPost } from './browse.js'
 import { buildCacheKey } from './cache.js'
 import { ConvertError } from './errors.js'
+import { firecrawlSearchConfigured, searchFirecrawlStatuses } from './firecrawl.js'
 import { fetchFxConnections, fetchFxProfile, fetchFxProfileStatuses, searchFxStatuses } from './fxtwitter.js'
 
 const post = { id: '1', text: 'hello', url: 'https://x.com/ada/status/1', author: { screen_name: 'ada' } }
@@ -92,7 +98,7 @@ describe('browse', () => {
     vi.mocked(searchFxStatuses).mockResolvedValue({ results: [post] })
     await browse({ resource: 'search', q: 'x-md', format: 'json' })
     expect(vi.mocked(buildCacheKey)).toHaveBeenCalledWith(
-      expect.objectContaining({ format: 'json', v: 2 }),
+      expect.objectContaining({ format: 'json', v: 3 }),
     )
   })
 })
@@ -101,4 +107,45 @@ test('provider filtering identifies replies and reposts', () => {
   expect(isOriginalPost(post)).toBe(true)
   expect(isOriginalPost({ ...post, replying_to_status: ['9'] })).toBe(false)
   expect(isOriginalPost({ ...post, reposted_by: { screen_name: 'bob' } })).toBe(false)
+})
+
+describe('search fallback', () => {
+  const outage = new ConvertError(503, 'down', 'search_unavailable')
+
+  test('serves Firecrawl snippets as a degraded result when live search is down', async () => {
+    vi.mocked(searchFxStatuses).mockRejectedValue(outage)
+    vi.mocked(searchFirecrawlStatuses).mockResolvedValue([post])
+    const result = await browse({ resource: 'search', q: 'hello', full: true, nocache: true })
+    expect(searchFirecrawlStatuses).toHaveBeenCalledWith('hello', 'latest', 20)
+    expect(result).toMatchObject({ source: 'firecrawl', degraded: true, posts: [post] })
+    expect(result.markdown).toContain('> Live X search is unavailable')
+    expect(result.markdown).not.toContain('likes')
+    expect(result.markdown).not.toContain('Continue')
+    const response = browseResponse(result, false)
+    expect(response.headers).toMatchObject({ 'X-Source': 'firecrawl', 'X-Search-Degraded': 'true' })
+  })
+
+  test('does not fall back for continuations or when unconfigured', async () => {
+    vi.mocked(searchFxStatuses).mockRejectedValue(outage)
+    await expect(browse({ resource: 'search', q: 'hello', cursor: 'c1', nocache: true })).rejects.toBe(outage)
+    await expect(browse({ resource: 'search', q: 'hello', page: 2, nocache: true })).rejects.toBe(outage)
+    vi.mocked(firecrawlSearchConfigured).mockReturnValueOnce(false)
+    await expect(browse({ resource: 'search', q: 'hello', nocache: true })).rejects.toBe(outage)
+    expect(searchFirecrawlStatuses).not.toHaveBeenCalled()
+  })
+
+  test('does not fall back on other errors', async () => {
+    const other = new ConvertError(502, 'boom', 'fxtwitter_error')
+    vi.mocked(searchFxStatuses).mockRejectedValue(other)
+    await expect(browse({ resource: 'search', q: 'hello', nocache: true })).rejects.toBe(other)
+    expect(searchFirecrawlStatuses).not.toHaveBeenCalled()
+  })
+
+  test('live results report the fxtwitter source and no degraded header', async () => {
+    vi.mocked(searchFxStatuses).mockResolvedValue({ results: [post] })
+    const result = await browse({ resource: 'search', q: 'hello', nocache: true })
+    const response = browseResponse(result, false)
+    expect(response.headers['X-Source']).toBe('fxtwitter')
+    expect(response.headers['X-Search-Degraded']).toBeUndefined()
+  })
 })

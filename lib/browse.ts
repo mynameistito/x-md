@@ -6,6 +6,7 @@ import {
   withCache,
 } from './cache.js'
 import { ConvertError } from './errors.js'
+import { firecrawlSearchConfigured, searchFirecrawlStatuses } from './firecrawl.js'
 import {
   fetchFxConnections,
   fetchFxProfile,
@@ -19,8 +20,12 @@ import {
 const DEFAULT_LIMIT = 20
 const MAX_LIMIT = 50
 const MAX_PAGE = 10
+/** Degraded search results are re-checked quickly so recovery of the live source shows up. */
+const DEGRADED_TTL_MS = 60_000
+const DEGRADED_NOTE = 'Live X search is unavailable right now. These are web-indexed snippets of x.com posts, not a live timeline: ordering and coverage differ, snippet text may be truncated, and no metrics are available.'
 
 export type BrowseResource = 'profile' | 'search' | 'followers' | 'following'
+export type BrowseSource = 'fxtwitter' | 'firecrawl'
 
 export interface BrowseInput {
   resource?: string | null
@@ -46,6 +51,9 @@ export interface BrowseResult {
   page: number
   limit: number
   nextCursor?: string
+  source: BrowseSource
+  /** Set when a fallback source served the result instead of live X data. */
+  degraded?: boolean
   markdown: string
   cache: CacheStatus
 }
@@ -90,12 +98,13 @@ async function walkPages<T>(
 }
 
 function postLine(post: FxTweet, full: boolean): string {
-  const handle = post.author?.screen_name ?? 'unknown'
-  const url = post.url ?? (post.id ? `https://x.com/${handle}/status/${post.id}` : `https://x.com/${handle}`)
+  const handle = post.author?.screen_name
+  const who = handle ? `[@${handle}](https://x.com/${handle})` : post.author?.name ?? 'unknown'
+  const url = post.url ?? (post.id ? `https://x.com/${handle ?? 'i'}/status/${post.id}` : `https://x.com/${handle ?? ''}`)
   const text = (post.text ?? '').replace(/\s+/g, ' ').trim()
   const metrics = full ? ` — ${post.likes ?? 0} likes, ${post.retweets ?? 0} reposts, ${post.replies ?? 0} replies` : ''
   const date = full && post.created_at ? ` (${post.created_at})` : ''
-  return `- [@${handle}](${`https://x.com/${handle}`}): ${text}${date}${metrics} [Source](${url})`
+  return `- ${who}: ${text}${date}${metrics} [Source](${url})`
 }
 
 function userLine(user: FxAuthor, full: boolean): string {
@@ -135,7 +144,9 @@ function renderMarkdown(input: BrowseInput, result: Omit<BrowseResult, 'markdown
     if (full) lines.push(`Followers: ${p.followers ?? 0} · Following: ${p.following ?? 0} · Posts: ${p.statuses ?? 0}`, '')
     lines.push('## Latest posts', ...(result.posts ?? []).map((post) => postLine(post, full)))
   } else if (result.resource === 'search') {
-    lines.push(`# X search: ${result.query}`, '', ...(result.posts ?? []).map((post) => postLine(post, full)))
+    lines.push(`# X search: ${result.query}`, '')
+    if (result.degraded) lines.push(`> ${DEGRADED_NOTE}`, '')
+    lines.push(...(result.posts ?? []).map((post) => postLine(post, result.degraded ? false : full)))
   } else {
     lines.push(`# @${result.handle} ${result.resource}`, '', ...(result.users ?? []).map((user) => userLine(user, full)))
   }
@@ -152,9 +163,20 @@ async function browseUncached(input: BrowseInput, resource: BrowseResource, page
     const query = input.q?.trim()
     if (!query) throw new ConvertError(400, 'Search query q is required.', 'missing_query')
     const feed = ['latest', 'top', 'media'].includes(input.feed ?? '') ? String(input.feed) : 'latest'
-    const list = await walkPages(page, input.cursor ?? undefined, (cursor) => searchFxStatuses(query, feed, cursor, limit))
-    const base = { resource, posts: list.results.slice(0, limit), query, feed, page, limit, nextCursor: list.cursor?.bottom }
-    return { ...base, markdown: renderMarkdown(input, base, full) }
+    try {
+      const list = await walkPages(page, input.cursor ?? undefined, (cursor) => searchFxStatuses(query, feed, cursor, limit))
+      const base = { resource, posts: list.results.slice(0, limit), query, feed, page, limit, nextCursor: list.cursor?.bottom, source: 'fxtwitter' as const }
+      return { ...base, markdown: renderMarkdown(input, base, full) }
+    } catch (error) {
+      // Fall back only for a fresh first page: a cursor or page number belongs to
+      // the live source and cannot be continued by the web index.
+      const firstPage = page === 1 && !input.cursor
+      const outage = error instanceof ConvertError && error.code === 'search_unavailable'
+      if (!outage || !firstPage || !firecrawlSearchConfigured()) throw error
+      const posts = await searchFirecrawlStatuses(query, feed, limit)
+      const base = { resource, posts, query, feed, page, limit, source: 'firecrawl' as const, degraded: true }
+      return { ...base, markdown: renderMarkdown(input, base, full) }
+    }
   }
 
   const handle = validHandle(input.handle)
@@ -164,12 +186,12 @@ async function browseUncached(input: BrowseInput, resource: BrowseResource, page
       walkPages(page, input.cursor ?? undefined, (cursor) => fetchFxProfileStatuses(handle, cursor, limit)),
     ])
     const posts = list.results.filter(isOriginalPost).slice(0, limit)
-    const base = { resource, profile, posts, handle, page, limit, nextCursor: list.cursor?.bottom }
+    const base = { resource, profile, posts, handle, page, limit, nextCursor: list.cursor?.bottom, source: 'fxtwitter' as const }
     return { ...base, markdown: renderMarkdown(input, base, full) }
   }
 
   const list = await walkPages(page, input.cursor ?? undefined, (cursor) => fetchFxConnections(handle, resource, cursor, limit))
-  const base = { resource, users: list.results.slice(0, limit), handle, page, limit, nextCursor: list.cursor?.bottom }
+  const base = { resource, users: list.results.slice(0, limit), handle, page, limit, nextCursor: list.cursor?.bottom, source: 'fxtwitter' as const }
   return { ...base, markdown: renderMarkdown(input, base, full) }
 }
 
@@ -187,8 +209,13 @@ export async function browse(input: BrowseInput): Promise<BrowseResult> {
   }
   const page = Math.min(positiveInt(input.page, 1), MAX_PAGE)
   const limit = Math.min(positiveInt(input.limit, DEFAULT_LIMIT), MAX_LIMIT)
-  const key = buildCacheKey({ v: 2, resource, handle: input.handle ?? '', q: input.q ?? '', feed: input.feed ?? '', cursor: input.cursor ?? '', page, limit, full: truthy(input.full) ? 1 : 0, format: input.format ?? 'markdown' })
-  const cached = await withCache(key, truthy(input.nocache), () => browseUncached(input, resource, page, limit))
+  const key = buildCacheKey({ v: 3, resource, handle: input.handle ?? '', q: input.q ?? '', feed: input.feed ?? '', cursor: input.cursor ?? '', page, limit, full: truthy(input.full) ? 1 : 0, format: input.format ?? 'markdown' })
+  const cached = await withCache(
+    key,
+    truthy(input.nocache),
+    () => browseUncached(input, resource, page, limit),
+    (value) => (value.degraded ? DEGRADED_TTL_MS : undefined),
+  )
   return { ...cached.value, cache: cached.status }
 }
 
@@ -196,14 +223,17 @@ export function browseResponse(result: BrowseResult, asJson: boolean): { status:
   const headers: Record<string, string> = {
     'Content-Type': asJson ? 'application/json; charset=utf-8' : 'text/markdown; charset=utf-8',
     Vary: 'Accept',
-    'X-Source': 'fxtwitter',
+    'X-Source': result.source,
     'X-Cache': result.cache.toUpperCase(),
     'X-Browse-Resource': result.resource,
     'X-Result-Count': String(result.posts?.length ?? result.users?.length ?? 0),
   }
+  if (result.degraded) headers['X-Search-Degraded'] = 'true'
   if (result.cache !== 'bypass') {
     headers['Cache-Control'] = cacheControlHeader()
-    headers['Vercel-CDN-Cache-Control'] = vercelCacheControlHeader()
+    headers['Vercel-CDN-Cache-Control'] = result.degraded
+      ? vercelCacheControlHeader(DEGRADED_TTL_MS / 1000)
+      : vercelCacheControlHeader()
   }
   return { status: 200, headers, body: asJson ? JSON.stringify(result) : result.markdown }
 }

@@ -156,7 +156,7 @@ Optional environment variables:
 | Variable | Description |
 | --- | --- |
 | `CONTEXT_DEV_API_KEY` | Context.dev converter fallback |
-| `FIRECRAWL_API_KEY` | Firecrawl converter fallback |
+| `FIRECRAWL_API_KEY` | Firecrawl converter fallback and degraded `/search` fallback (web-indexed x.com snippets, `X-Source: firecrawl`, `X-Search-Degraded: true`) when live X search is down |
 | `CACHE_TTL_SECONDS` | Cache TTL; default `3600` |
 | `CACHE_DISABLED` | Set to `1` to disable caching |
 | `CACHE_PERSIST` | Set to `0` for memory-only caching |
