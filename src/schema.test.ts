@@ -126,6 +126,10 @@ describe('homepage JSON-LD', () => {
     expect(api.termsOfService).toBe('https://mdfromx.com/terms')
   })
 
+  test('shows mdfromx.com in the styled terminal comparison', () => {
+    expect(landingHtml()).toContain('$ curl mdfromx.com/trq212/status/2052809885763747935')
+  })
+
   test('every @id reference resolves inside the graph', () => {
     const ids = new Set(graph.map((node) => node['@id']).filter(Boolean))
     for (const reference of references(graph)) expect(ids).toContain(reference)
