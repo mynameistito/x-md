@@ -4,7 +4,7 @@ export const PARALLEL_HOSTS: ReadonlySet<string> = new Set([PARALLEL_HOST, `fast
 /** Adapt authored service references; third-party URLs keep their original hosts. */
 export function domainText(source: string, origin: string): string {
   const { host } = new URL(origin)
-  return source.replace(/(?<![a-zA-Z0-9_.-])(https:\/\/)?(?:fast\.)?mdfromx\.com(?![a-zA-Z0-9_-]|\.[a-zA-Z0-9_-])/g,
+  return source.replace(/(?<![a-zA-Z0-9_.-])(https:\/\/)?(?:x\.pcstyle\.dev|(?:fast\.)?mdfromx\.com)(?![a-zA-Z0-9_-]|\.[a-zA-Z0-9_-])/g,
     (_match, scheme) => scheme ? origin : host)
 }
 
@@ -16,6 +16,7 @@ const FILES = new Set([
   'site.webmanifest', '.well-known/ard.json', '.well-known/ai-catalog.json',
   'blume-search.json', 'agent-readability.json',
   '.well-known/api-catalog', '.well-known/mcp/server-card.json',
+  '.well-known/integrations.json', '.well-known/agent-card.json',
 ])
 
 /** Only public build output is eligible; API and permalink routes pass through. */

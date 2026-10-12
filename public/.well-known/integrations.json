@@ -1,0 +1,44 @@
+{
+  "version": 3,
+  "summary": "x.md exposes a public read-only HTTP API with an OpenAPI 3.1 description and a public MCP server over Streamable HTTP, both for reading public X posts, threads, profiles, and search results as Markdown or JSON; no credentials required.",
+  "surfaces": [
+    {
+      "slug": "x-md-api",
+      "name": "x.md API",
+      "type": "http",
+      "url": "https://mdfromx.com/api/v1",
+      "spec": "https://mdfromx.com/openapi.json",
+      "docs": "https://mdfromx.com/docs",
+      "basis": {
+        "via": "declared",
+        "source": "https://mdfromx.com/.well-known/integrations.json"
+      },
+      "auth": {
+        "status": "none",
+        "basis": {
+          "via": "declared",
+          "source": "https://mdfromx.com/.well-known/integrations.json"
+        }
+      }
+    },
+    {
+      "slug": "x-md-mcp",
+      "name": "x.md MCP server",
+      "type": "mcp",
+      "url": "https://mdfromx.com/mcp",
+      "transports": ["streamable-http"],
+      "docs": "https://mdfromx.com/docs/mcp",
+      "basis": {
+        "via": "declared",
+        "source": "https://mdfromx.com/.well-known/integrations.json"
+      },
+      "auth": {
+        "status": "none",
+        "basis": {
+          "via": "declared",
+          "source": "https://mdfromx.com/.well-known/integrations.json"
+        }
+      }
+    }
+  ]
+}

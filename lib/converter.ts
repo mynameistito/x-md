@@ -49,6 +49,7 @@ const ALLOWED_HOSTS = new Set([
   'twitter.com',
   'www.twitter.com',
   'mobile.twitter.com',
+  'x.pcstyle.dev',
   'mdfromx.com',
   ...PARALLEL_HOSTS,
 ])
